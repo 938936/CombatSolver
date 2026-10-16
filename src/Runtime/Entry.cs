@@ -60,8 +60,14 @@ public static class Entry
         // 模组类型的 ModelId 在注册冻结前还会被内容库改写，GetId 缓存要等注册表初始化完成才收模组类型。
         RitsuLibFramework.SubscribeLifecycle<ModelRegistryInitializedEvent>(
             _ => ModelDbGetIdCachePatch.MarkModelRegistryInitialized());
+        // Act4Heart 兼容层依赖该 Mod 程序集已加载（模型注册表初始化保证），在首个根捕获前完成登记。
+        RitsuLibFramework.SubscribeLifecycle<ModelRegistryInitializedEvent>(
+            _ => Act4HeartCompat.Initialize());
         if (STS2RitsuLib.Content.ModContentRegistry.IsFrozen)
+        {
             ModelDbGetIdCachePatch.MarkModelRegistryInitialized();
+            Act4HeartCompat.Initialize();
+        }
         CombatManager.Instance.TurnStarted += OnTurnStarted;
 
         var patcher = RitsuLibFramework.CreatePatcher(ModId, "combat-solver", "战斗路线求解器");

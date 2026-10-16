@@ -331,6 +331,14 @@ internal sealed partial class UnattendedTestRunner
             {
                 await plating.BeforeSideTurnEndEarly(choiceContext, side, participantArray);
             }
+            // Act4Heart 金属化与原版 Plating 同相位（Early），通过适配层登记的精确类型调用原生实现。
+            foreach (PowerModel a4hMetallicize in participantArray
+                         .SelectMany(static participant => participant.Powers)
+                         .Where(power => Act4HeartCompat.IsMetallicizePower(power))
+                         .ToArray())
+            {
+                await a4hMetallicize.BeforeSideTurnEndEarly(choiceContext, side, participantArray);
+            }
         }
         foreach (DoomPower doom in combatState.Creatures
                      .SelectMany(static creature => creature.Powers.OfType<DoomPower>())
@@ -384,6 +392,15 @@ internal sealed partial class UnattendedTestRunner
                      .ToArray())
         {
             await power.AfterSideTurnEnd(choiceContext, side, participantArray);
+        }
+
+        // Act4Heart 再生：AfterSideTurnEnd 治疗且不递减，适配层登记类型之外的原生行为保持不变。
+        foreach (PowerModel a4hRegenerate in combatState.Creatures
+                     .SelectMany(static creature => creature.Powers)
+                     .Where(power => Act4HeartCompat.IsRegeneratePower(power))
+                     .ToArray())
+        {
+            await a4hRegenerate.AfterSideTurnEnd(choiceContext, side, participantArray);
         }
 
         if (side == CombatSide.Enemy)

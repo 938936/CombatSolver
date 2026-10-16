@@ -176,6 +176,11 @@ internal sealed partial class UnattendedTestRunner
                 AssertCombatModBoundary(scenario.CombatState);
                 runner._completedChecks.Add("CombatModBoundary:Merchant:GameplayDeclaration:RootUnchanged");
             }
+            if (request.ScenarioId == "ACT4HEART-COMPAT")
+            {
+                runner.SetStage("act4heart_compat");
+                await runner.AssertAct4HeartCompatAsync(scenario.CombatState, scenario.Player);
+            }
             if (request.ScenarioId == "CYCLE-EXIT-REVOKED-PARENT")
             {
                 runner.SetStage("cycle_exit_revoked_parent");

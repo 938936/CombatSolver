@@ -76,33 +76,44 @@ internal static class PredictionModHookSubscriberInertness
         return inert;
     }
 
+    /// <summary>
+    /// 沿继承链收集类型在 <see cref="AbstractModel"/> 上覆写的全部 hook 名（非 hook 虚成员除外）。
+    /// 供惰性判定与第三方适配层结构自检共用同一份权威语义；反射失败时抛出，由调用方决定失败路径。
+    /// </summary>
+    internal static SortedSet<string> CollectHookOverrides(Type modelType)
+    {
+        SortedSet<string> hooks = new(StringComparer.Ordinal);
+        for (Type? type = modelType;
+             type is not null && type != typeof(AbstractModel);
+             type = type.BaseType)
+        {
+            foreach (MethodInfo method in type.GetMethods(
+                         BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
+                         | BindingFlags.DeclaredOnly))
+            {
+                if (!method.IsVirtual || method.IsAbstract)
+                    continue;
+                MethodInfo baseDefinition = method.GetBaseDefinition();
+                if (baseDefinition.DeclaringType != typeof(AbstractModel))
+                    continue;
+                string name = StripAccessorPrefix(baseDefinition.Name);
+                if (NonHookMemberNames.Contains(name))
+                    continue;
+                hooks.Add(name);
+            }
+        }
+        return hooks;
+    }
+
     private static (bool Inert, string Overrides) Classify(Type subscriberType)
     {
         if (!typeof(AbstractModel).IsAssignableFrom(subscriberType) || subscriberType.IsAbstract)
             return (false, string.Empty);
 
-        SortedSet<string> hooks = new(StringComparer.Ordinal);
+        SortedSet<string> hooks;
         try
         {
-            for (Type? type = subscriberType;
-                 type is not null && type != typeof(AbstractModel);
-                 type = type.BaseType)
-            {
-                foreach (MethodInfo method in type.GetMethods(
-                             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
-                             | BindingFlags.DeclaredOnly))
-                {
-                    if (!method.IsVirtual || method.IsAbstract)
-                        continue;
-                    MethodInfo baseDefinition = method.GetBaseDefinition();
-                    if (baseDefinition.DeclaringType != typeof(AbstractModel))
-                        continue;
-                    string name = StripAccessorPrefix(baseDefinition.Name);
-                    if (NonHookMemberNames.Contains(name))
-                        continue;
-                    hooks.Add(name);
-                }
-            }
+            hooks = CollectHookOverrides(subscriberType);
         }
         catch (Exception)
         {

@@ -76,6 +76,16 @@ internal static class BeforeSideTurnEndMirrors
         return registry;
     }
 
+    /// <summary>
+    /// Registers an audited third-party Early mirror addressed by runtime <see cref="Type"/>.
+    /// Must complete before the first root capture; the resolved-type lookup cache makes a
+    /// later registration ineffective. Rejects duplicates and non-override types.
+    /// </summary>
+    internal static void RegisterEarlyMirror(
+        Type modelType,
+        Action<AbstractModel, BeforeSideTurnEndMirrorContext> handler)
+        => CombatSolver.Engine.Common.Mirrors.ThirdPartyMirrorRegistration.Register(EarlyRegistry, modelType, handler);
+
     private static Registry CreateRegistry()
     {
         var registry = new Registry(BeforeSideTurnEnd);

@@ -66,6 +66,24 @@ internal sealed class PredictionModHookSubscriberCapture
                 || name == LoadoutPowerGiverSummonHookTypeName && HasInactiveLoadoutSummonPowers);
     public MirroredHookListenerFilter MirroredHookFilter { get; } = MirroredHookListenerFilter.Capture();
 
+    // 由适配层（当前只有 Act4HeartCompat）在审计通过后登记的已确认订阅者。
+    // 键是精确 Type：适配层按 MVID 钉死了来源程序集，不同程序集的同类名类型不会命中；
+    // 值是登记时的 Mod id，验证时仍要与运行时来源一致。
+    private static readonly Dictionary<Type, string> ConfirmedGameplaySubscribers = [];
+
+    /// <summary>
+    /// 登记一个已通过结构审计的第三方 gameplay 订阅器，令 <see cref="ValidateSubscriber"/> 放行。
+    /// 只允许在根捕获前调用；重复登记是幂等的空操作。
+    /// </summary>
+    internal static void RegisterConfirmedSubscriber(Type type, string modId)
+    {
+        ArgumentNullException.ThrowIfNull(type);
+        if (!typeof(AbstractModel).IsAssignableFrom(type) || type.IsAbstract)
+            throw new ArgumentException($"已确认订阅者必须是具体的 AbstractModel：{type.FullName}。", nameof(type));
+        if (ConfirmedGameplaySubscribers.TryAdd(type, modId))
+            Entry.Logger.Info($"[CombatSolver/Test] MOD_HOOK_SUBSCRIBER_CONFIRMED mod={modId} type={type.FullName}");
+    }
+
     private PredictionModHookSubscriberCapture(
         AbstractModel[] runSubscribers,
         AbstractModel[] combatSubscribers,
@@ -260,6 +278,16 @@ internal sealed class PredictionModHookSubscriberCapture
             Entry.Logger.Info(
                 $"[CombatSolver/Test] MOD_HOOK_SUBSCRIBER_COMBAT_INERT scope={scope} " +
                 $"mod={mod?.manifest?.id ?? "-"} type={type.FullName} hooks={overriddenHooks}");
+            return;
+        }
+        // 适配层按 MVID 与结构钉死后确认的订阅者：其战斗效果已由镜像/域分支覆盖。
+        if (ConfirmedGameplaySubscribers.TryGetValue(type, out string? confirmedModId)
+            && !isBaseGame
+            && string.Equals(mod?.manifest?.id, confirmedModId, StringComparison.Ordinal))
+        {
+            Entry.Logger.Info(
+                $"[CombatSolver/Test] MOD_HOOK_SUBSCRIBER_CONFIRMED_PASS scope={scope} " +
+                $"mod={mod?.manifest?.id ?? "-"} type={type.FullName}");
             return;
         }
         if (!isBaseGame

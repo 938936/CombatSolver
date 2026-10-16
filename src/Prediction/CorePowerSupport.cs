@@ -541,6 +541,11 @@ internal static class CorePowerSupport
                 int plating = combat.GetAmount<PlatingPower>(enemy);
                 if (plating > 0)
                     simulator.GainBlock(enemy, plating, ValueProp.Unpowered);
+                // Act4Heart 超精英金属化与原版 Plating 同相位（BeforeSideTurnEndEarly），
+                // 与治疗/格挡互不干扰，紧跟 Plating 之后结算。
+                int a4hMetallicize = Act4HeartCompat.EnemyMetallicizeAmount(combat, enemy);
+                if (a4hMetallicize > 0)
+                    simulator.GainBlock(enemy, a4hMetallicize, ValueProp.Unpowered);
             }
             Tick<DoubleDamagePower>(combat, enemy);
             if (simulator.HasPendingChoice)

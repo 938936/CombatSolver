@@ -21,3 +21,17 @@ Testing 在完整原生检查点已核验、当前手牌上限为默认 10 时�
 ### Smart 药水审计独立成员时间（PR #230）
 
 Smart 无强制用药、主结果无药且根有可搜索药水时，在主搜索耗尽时间后为首个可选药水层提供软预算的 1/5（1–30 秒）。该层按软预算保留结果，关联取消令牌提供 1/6 收尾时间，显式层数上限固定为一层；其他政策继续沿原入口执行。后置开局前缀补搜使用请求账本。已耗尽请求会增加这一层的实际耗时。根因、原包数据与验证范围见[Q011 记录](issues/q011-worldlines-20261006.md)。
+
+### Act 4 Heart 前三层兼容层
+
+为 Act 4 Heart（创意工坊 3747537811，1.1.7）添加第一方审计适配，求解器在该 Mod 安装时可正常求解前三层战斗；第四层怪物维持既有的第三方怪物显式拒绝。装 Mod 后前三层实际引入的第三方内容与处理：
+
+- `GreenKeyHooks` 订阅器（地图标记超精英、战前 buff、战后奖励）：`TryModifyRewards` 不在惰性清单内，此前是整体拒绝的唯一硬阻塞。新增 `PredictionModHookSubscriberCapture.RegisterConfirmedSubscriber(Type, modId)` 确认表，由适配层在审计通过后登记；验证时同时核对运行时来源 Mod id。
+- `MetallicizePowerA4h`（`BeforeSideTurnEndEarly` 获得格挡，IL 逐指令比对与原版 Plating 等价，ValueProp 4）：玩家侧经 `BeforeSideTurnEndMirrors.RegisterEarlyMirror(Type, handler)` 按监听顺序派发（消除伪 MethodNotMirrored 风险）；敌方回合末域代码 `CorePowerSupport.TriggerEnemySideTurnEndEffects` 在 Plating 之后结算同相位格挡。
+- `RegeneratePowerA4h`（`AfterSideTurnEnd` 治疗且**不递减**）：`EndTurnPowerSupport.TriggerRegular` 在监听器循环内该 Power 自己的位置增加精确类型分支，双侧通用。
+
+审计双保险：程序集 MVID 钉死（`34cb40b4-09a2-48d4-8da0-09e7a0cc054a`）+ 三类型的 AbstractModel hook 覆盖集精确匹配（Power 子类的链上覆写集包含原版 `PowerModel` 的克隆框架成员 `AfterCloned`/`DeepCloneFields`）。任一失败一个都不登记并回落到默认「暂未适配」拒绝；Mod 更新后需重新审计。登记在 `Entry` 的 `ModelRegistryInitializedEvent`（或注册表已冻结）后完成，早于首个根捕获。`PredictionModHookSubscriberInertness` 抽出共享的 `CollectHookOverrides` 作为覆盖集权威实现。
+
+已知近似（策略层非模拟层，记录不修）：`ActEndingBossPolicy.ResolveHpRelief` 读 live `Acts.Count`，装 Mod 后第三幕首领自动按 ActClearHeal（保留 20% 治疗价值）处理，而 Mod 实际进入第四层并回复 100%（无 A2）/75%（A2，保留 0%/25%）。装 Mod 的第三层首领收尾会偏保守，属可接受的策略近似，不做 Mod 专属策略。`PotionRewardOutlook` 同样读 live 值自适应。
+
+验证：`ACT4HEART-COMPAT` 无头场景（mock 同构类型经测试缝走同一审计与登记路径）覆盖结构自检拒绝、MVID 拒绝、未适配门禁拒绝、登记后放行、金属化/再生模拟 vs 实机严格差分、再生不递减、玩家侧 Early 分发无未镜像风险，并完整跑通当回合搜索与部署；`MIRRORED-HOOK-FILTER`、`SMOKE-001`＋`-VerifyPredictionFailureBoundaries` 回归通过。结构门禁通过。测试宿主不安装真实 Mod；真实程序集的 MVID/结构路径只能由审计常量本身约束，未在真机验证。

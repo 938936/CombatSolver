@@ -71,6 +71,7 @@ CrabRagePower 的同伴死亡结算由 `AfterDeathMirrors` 独占：力量、格
 3. 在 `PredictionModHookSubscriberCapture.KnownPreRootSubscriberTypeNames` 白名单里。
 4. Loadout 的 `PowerGiverSummonHook`：主线程检查实际加载的公开计数快照接口及怪物能力配置，把空配置写入续用状态戳。版本号变化不会阻止搜索；接口变化或配置非空时明确失败。这不放行 Loadout 的其他战斗效果。
 5. BaseLib `CardModifier`：侧表状态随预测卡牌独立复制并重绑 Owner，Hook 仍由对应镜像处理。修饰器的战斗监听成员与原生 BaseLib 一致，按玩家五种战斗牌堆枚举；生成牌完成战斗域登记后，在入堆时参与监听，离开所有牌堆后退出监听。复跑使用 `-VerifyBaseLibCardModifierBoundary`，合同直接对照原生生成牌及各牌堆的生命周期。
+6. 适配层审计确认（当前只有内置的 Act 4 Heart 前三层兼容层使用）：`PredictionModHookSubscriberCapture.RegisterConfirmedSubscriber(Type, modId)` 按 MVID 钉死的程序集与 hook 覆盖集自检通过后登记，验证时还要求运行时来源 Mod id 与登记值一致。该入口是内部测试缝，**不对外部程序集开放**；第三方 Mod 的订阅器确认仍按第 0 节的说明单独留档申请。
 
 条件都不满足就抛 `IncompatibleGameplayModException`，整个求解器停摆。
 
@@ -104,6 +105,26 @@ CrabRagePower 的同伴死亡结算由 `AfterDeathMirrors` 独占：力量、格
 `CardIsPlayableMirrors` 使用独立的镜像分派：继承基类的牌返回 `true`；有显式登记的重写执行
 对应镜像；未登记的重写记录 `MethodNotMirrored`，并返回调用方提供的 `true`。这条覆盖提示
 用于暴露缺失语义，适配者必须登记真实可打出条件，才能保证搜索按预测手牌判断合法性。
+
+### 1.4 内置的第一方适配：Act 4 Heart 前三层
+
+Act 4 Heart（创意工坊 3747537811）是项目所有者显式要求的例外，按第 3.4 节的钉死纪律实现为
+内置审计适配层（`src/Prediction/Act4HeartCompat.cs`），不是可复用的第三方入口：
+
+- 程序集 MVID 钉死 + 三类型 hook 覆盖集精确匹配，任一失败整层不登记，回落到默认拒绝；
+- `GreenKeyHooks` 订阅器（地图标记 / 战前超精英 buff / 战后奖励，效果均在模拟窗口之外）经
+  确认表放行；
+- `MetallicizePowerA4h`（Early 格挡，等价原版 Plating）登记 `BeforeSideTurnEndMirrors` 的
+  按 `Type` Early 镜像，敌方回合末由 `CorePowerSupport.TriggerEnemySideTurnEndEffects`
+  域分支结算；
+- `RegeneratePowerA4h`（AfterSideTurnEnd 治疗不递减）由 `EndTurnPowerSupport.TriggerRegular`
+  的精确类型分支结算；
+- 第四层怪物与钥匙遗物之外的内容不在此列：第四层怪物继续走第三方怪物拒绝，红/蓝钥匙 hook
+  本就惰性或与战斗无关。
+
+其他 Mod 的同类需求（订阅器确认、回合末域分支）仍然封闭，见第 6 节；适配请求按第 0 节单独留档。
+`ActEndingBossPolicy` 的第三幕首领收尾读 live 幕数，装该 Mod 后自动按「下一幕仍会回复」的
+ActClearHeal 口径保守处理，属策略近似而非模拟语义。
 
 ## 2. 登记点总表
 
@@ -356,13 +377,13 @@ StrategicEffectMirrors.Register<TYourPower>(requirements, evaluate, host);
 | `RelicCounterCatalog` / `SimulatedCombatState.ReadRelicCounter` | 战斗末卡数仅覆盖已核对的十种原版计数；第三方显示计数只列出“尚未适配”，不会被自动当作跨战斗目标。见[计数策略说明](../relic-counters.md) | 精确原版适配 |
 | `SearchPolicySnapshot.IsAct3BossEncounter` / `CombatBeamSolver.CaptureAct3BossInteractionPotential` | 首领范围只含第三幕实验体、永世沙漏、女王；联动上下文只适配原版 Pagestorm、DanseMacabre、Demesne；StrategicEffectModel 对 PrepTimePower 按未来攻击与回合视野估计重复精力收益。这些不是通用第三方触发次数分析。第三方 Power 仍使用 §2.2 登记 | 原版特化；第三方估值已有入口 |
 | `GoldGainedMirrors` / `GoldGainSupport` | 三个标准 descriptor 描述金币 Modify、AfterModify、AfterGain；当前只有原版 BowlerHat、Ectoplasm、DragonFruit 的精确登记，registry 未开放外部注册。仅明确审计的展示通知可 Ignored；未知 override 即使非 gameplay manifest 也拒绝。修改用 combat child，获得后使用根冻结的 null-child 跑局序列；金币/遗物/药水/HP 属当前分支。 | 原版封闭派发 |
-| `PredictionModHookSubscriberCapture.KnownPreRootSubscriberTypeNames` / `HasCertifiedNonHealingSubscribers` | 私有静态白名单，没有公开登记入口。严格回复证书只额外审计Loadout指定MVID下五个确切回调来源，召唤配置须为空且无BaseLib卡牌修饰器；只消费根捕获投影，不新增后台Mod回调执行。其他来源拒绝，不能把已支持捕获或属于该程序集当作无回复证明 | 封闭版本证明 |
+| `PredictionModHookSubscriberCapture.KnownPreRootSubscriberTypeNames` / `HasCertifiedNonHealingSubscribers` | 私有静态白名单，没有公开登记入口。严格回复证书只额外审计Loadout指定MVID下五个确切回调来源，召唤配置须为空且无BaseLib卡牌修饰器；只消费根捕获投影，不新增后台Mod回调执行。其他来源拒绝，不能把已支持捕获或属于该程序集当作无回复证明。`RegisterConfirmedSubscriber` 确认表是内部审计缝（当前仅 Act 4 Heart 前三层兼容层使用，MVID 钉死），不是第三方入口 | 封闭版本证明 |
 | `PersistentPowerSupport.GetModifiedHandDraw` | 八种已审计原版回合／计数抽牌遗物使用分支状态，在原生正常／后置监听顺序中结算；没有额外第三方贡献注册入口。其他监听者仍走已有派发，第三方语义不得借此获得回复证书 | 封闭分支查询 |
 | `PredictionModPatchAudit.ValidateLoadedMods` | 明确拒绝 `WheelchairSpire`，没有外部放行入口 | 项目不兼容策略 |
 | `NativeModelCloneConcurrency` | 预测克隆只放行已核对原版阶段、原版变量及 BaseLib/Ritsu 稀疏元数据复制补丁组合的普通原版卡牌；附魔/灾厄、第三方模型/变量和未知补丁保留原锁。Power 只放行已物化原版变量、继承默认克隆及 InitInternalData 的原版类型，同时核对基阶段与变量 getter 补丁；自定义初始化保持原锁。每个线程最外层模拟隔离域重新核对，不支持求解中安装补丁；原版 MutableClone 保护不变。没有新增外部注册入口 | 精确框架适配 |
 | `RitsuEmptyCapabilityFastPathPatches` | 模拟隔离域的空 capability 集可直接保留原卡牌标签序列；不枚举/复制标签，不缓存分支值。非空贡献者与精确类型默认来源继续框架入口；晚注册刷新来源代次，已物化的空集合仍按框架语义处理。live 不旁路，无新增登记入口 | 精确框架适配 |
 | `DynamicVarCloneMetadataPatches` | 模拟克隆只优化已核对为空默认值的 BaseLib 提示/升级字段与 Ritsu 提示工厂；非空值照常复制，live 调用保持原框架行为。其他附加字段继续原有克隆逻辑，不属于此优化入口 | 精确框架适配 |
-| `CorePowerSupport.TriggerPlayerRegularSideTurnEndEffects`、`FlushPlayerHandAtTurnEnd`、BeforeHandDraw、AfterSideTurnStart | 常规回合末及这些抽牌/阵营时点仍无通用登记；注能核心的首回合产球由 `TriggerRelicsAfterSideTurnStart` 显式结算，准备选牌根可能早于产球，不能认为所有开局效果已在根内。其闪电伤害加成仍走只读 `ModifyOrbValue`，只读数值支持不代表产球生命周期已适配。BeforeSideTurnStart、AfterPlayerTurnStart（Early/普通/Late）及 AfterSideTurnEndLate 已开放，见 §2.10，不能互相替代 | 部分开放 |
+| `CorePowerSupport.TriggerPlayerRegularSideTurnEndEffects`、`FlushPlayerHandAtTurnEnd`、BeforeHandDraw、AfterSideTurnStart | 常规回合末及这些抽牌/阵营时点仍无通用登记；`TriggerRegular` 与敌方 `TriggerEnemySideTurnEndEffects` 中的 Act 4 Heart 金属化/再生分支是 MVID 钉死的内部审计例外，不是第三方入口。注能核心的首回合产球由 `TriggerRelicsAfterSideTurnStart` 显式结算，准备选牌根可能早于产球，不能认为所有开局效果已在根内。其闪电伤害加成仍走只读 `ModifyOrbValue`，只读数值支持不代表产球生命周期已适配。BeforeSideTurnStart、AfterPlayerTurnStart（Early/普通/Late）及 AfterSideTurnEndLate 已开放，见 §2.10，不能互相替代 | 部分开放 |
 | `CombatPredictionSimulator.OnPlayWrapper` | 出牌后补抽没有挂载点 | 待做 |
 | `CardChoiceSupport.RemovalPriority` 的排序口径 | 移除类选择按**单卡**估值排，不看牌库其余部分；弃牌那一侧已经是「源牌堆平均值减本牌估值」的相对口径，消耗与转变没有。表现为求解器不会为了压出无限而主动烧牌。起手牌那一层已由 §2.7 打开，相对口径这一层仍然封闭 | 待做 |
 | `ContinuationStamp.AppendCard` 的 `private=` 段与 `CombatBeamSolver.CaptureCardStateFingerprintForTesting` 的 `switch (preview)` | **卡牌**的隐藏字段按原版类型写死（利爪、基因算法、巨锤、狂暴、镰刀、疯狂科学），第三方卡牌的私有计数进不了指纹。Power 那一侧已有 `PowerHiddenStateMirrors`，见 §2.6 | 待做 |

@@ -155,6 +155,14 @@ internal static partial class EndTurnPowerSupport
                     combat.SetPowerAmount(power, power.Amount - 1);
                     break;
             }
+            // Act4Heart 再生：AfterSideTurnEnd 治疗且不递减（原生实现无 PowerCmd.Decrement）。
+            // 放在监听器循环内该 Power 自己的位置，保持原版逐监听器顺序。
+            if (Act4HeartCompat.IsRegeneratePower(power)
+                && ownerParticipates
+                && simulator.State.GetCreature(owner).IsAlive)
+            {
+                simulator.Heal(owner, power.Amount);
+            }
             if (simulator.HasPendingChoice)
                 return false;
         }
