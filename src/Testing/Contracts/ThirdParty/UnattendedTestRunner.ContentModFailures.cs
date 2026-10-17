@@ -3,10 +3,15 @@ using CombatSolver.Engine.InCombat.Mirrors.Hooks.Resources;
 using CombatSolver.Engine.InCombat.Mirrors.Hooks.TurnEnd;
 using CombatSolver.Engine.InCombat.Mirrors.Hooks.TurnStart;
 using CombatSolver.Engine.InCombat.Simulation;
+using HarmonyLib;
 using MegaCrit.Sts2.Core.Combat;
+using MegaCrit.Sts2.Core.Commands;
+using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Creatures;
+using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
+using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Models;
@@ -235,6 +240,69 @@ internal sealed partial class UnattendedTestRunner
             AssemblyInfo.MockTypes = previousMocks;
         }
         AssertUploadGuidance(combat, player);
+    }
+
+    // 回合准备接管遇到未适配内容性 Mod 时的停止合同：根捕获抛出的 IncompatibleGameplayModException
+    // 不得逃回游戏回合循环（会杀死回合循环并卡死战斗，Act 4 Heart 第四层即此路径），必须停止本战斗
+    // 的求解器接管、给出稳定失败通知并回落原版回合准备。
+    private async Task AssertIncompatibleModTurnSetupStopsSolverAsync(CombatState combat, Player player)
+    {
+        var previousMocks = AssemblyInfo.MockTypes;
+        SolverSettingsData settings = SolverSettings.Current;
+        PlayerCombatState state = player.PlayerCombatState!;
+        PlayerTurnPhase previousPhase = state.Phase;
+        int previousTurn = state.TurnNumber;
+        Mod mod = new() { path = "incompatible-turn-setup-test", manifest = new ModManifest
+            { id = "IncompatibleTurnSetupMod", name = "Incompatible [Test]", affectsGameplay = true } };
+        // 选牌先决：消耗堆里放一张 Imbued 附魔牌——第 2 回合起附魔自动出牌不触发，自身没有回合准备副作用。
+        await ClearPlayerPilesAsync(player);
+        await InjectCardAsync(combat, player, new UnattendedCardInjection
+            { CardId = "SECOND_WIND", Pile = "Exhaust", EnchantmentId = "Imbued" });
+        await InjectCardAsync(combat, player, new UnattendedCardInjection
+            { CardId = "STRIKE_IRONCLAD", Pile = "Draw", Count = 10 });
+        state.TurnNumber = 2;
+        state.Phase = PlayerTurnPhase.Start;
+        int expectedHandCount = (int)MegaCrit.Sts2.Core.Hooks.Hook.ModifyHandDraw(
+            combat, player, CombatManager.baseHandDrawCount, out _);
+        SolverSettings.ApplyForTesting(settings with { AutomaticCalculationEnabled = true });
+        try
+        {
+            MonsterModel monster = combat.Enemies[0].Monster!;
+            AssemblyInfo.MockTypes = previousMocks == null ? [] : new(previousMocks);
+            AssemblyInfo.MockTypes[monster.GetType()] = (mod, false);
+            CombatManager manager = CombatManager.Instance;
+            object turnState = AccessTools.Field(typeof(CombatManager), "_turnState").GetValue(manager)!;
+            var context = new HookPlayerChoiceContext(player, LocalContext.NetId!.Value, GameActionType.Combat);
+            int notificationsBefore = SearchCompletionNotifier.RequestCountForTesting;
+
+            // 穿过 Harmony 补丁驱动真实 SetupPlayerTurn：被替换的回合准备任务必须正常完成，
+            // 异常一旦逃逸这里会直接抛出并使场景失败。
+            await (Task)AccessTools.Method(typeof(CombatManager), "SetupPlayerTurn")
+                .Invoke(manager, [turnState, player, context])!;
+
+            if (!SolverController.TurnSetupStoppedForIncompatibleMod)
+                throw new InvalidOperationException("未适配内容性 Mod 没有停止回合准备接管。");
+            if (SearchCompletionNotifier.RequestCountForTesting != notificationsBefore + 1)
+                throw new InvalidOperationException("回合准备停止没有发出稳定失败通知。");
+            if (state.Hand.Cards.Count != expectedHandCount)
+                throw new InvalidOperationException(
+                    $"原版回合准备没有完成抽牌：手牌 {state.Hand.Cards.Count}，预期 {expectedHandCount}。");
+
+            // 同一战斗内后续回合不得重试接管。
+            state.Phase = PlayerTurnPhase.Start;
+            if (PlayerTurnSetupCoordinator.TryInterceptSetup(manager, turnState, player, context, out _))
+                throw new InvalidOperationException("停止标记没有阻止后续回合的接管重试。");
+
+            _completedChecks.Add("IncompatibleTurnSetupStop:NoFault:NativeFallback:Notified:NoRetry");
+        }
+        finally
+        {
+            SolverSettings.ApplyForTesting(settings);
+            AssemblyInfo.MockTypes = previousMocks;
+            SolverController.ClearTurnSetupIncompatibleModStopForTesting();
+            state.TurnNumber = previousTurn;
+            state.Phase = previousPhase;
+        }
     }
 
     private static void AssertContentFailurePresentation(IncompatibleGameplayModException failure)

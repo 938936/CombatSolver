@@ -35,3 +35,11 @@ Smart 无强制用药、主结果无药且根有可搜索药水时，在主搜�
 已知近似（策略层非模拟层，记录不修）：`ActEndingBossPolicy.ResolveHpRelief` 读 live `Acts.Count`，装 Mod 后第三幕首领自动按 ActClearHeal（保留 20% 治疗价值）处理，而 Mod 实际进入第四层并回复 100%（无 A2）/75%（A2，保留 0%/25%）。装 Mod 的第三层首领收尾会偏保守，属可接受的策略近似，不做 Mod 专属策略。`PotionRewardOutlook` 同样读 live 值自适应。
 
 验证：`ACT4HEART-COMPAT` 无头场景（mock 同构类型经测试缝走同一审计与登记路径）覆盖结构自检拒绝、MVID 拒绝、未适配门禁拒绝、登记后放行、金属化/再生模拟 vs 实机严格差分、再生不递减、玩家侧 Early 分发无未镜像风险，并完整跑通当回合搜索与部署；`MIRRORED-HOOK-FILTER`、`SMOKE-001`＋`-VerifyPredictionFailureBoundaries` 回归通过。结构门禁通过。测试宿主不安装真实 Mod；真实程序集的 MVID/结构路径只能由审计常量本身约束，未在真机验证。
+
+### 回合准备路径的内容性 Mod 停止（修复战斗卡死）
+
+玩家报告：装 Act 4 Heart 进入第四层时，`IncompatibleGameplayModException`（`ValidateMonsterModels` 正确拒绝 `Act4Heart.SpireShield`）从回合准备协调器逃逸，杀死游戏回合循环，战斗卡死直到重开房间。根因：`PlayerTurnSetupPatch` 用求解器的回合准备任务**替换**了游戏 `SetupPlayerTurn`；初始上下文构造（含 `CombatRootSnapshot.Capture`）里的通用 catch 只通知 Failed 后原样重抛，而怪物门禁、订阅者门禁与 OnPlay 补丁门禁都在捕获内抛 `IncompatibleGameplayModException`——自动计算或全自动开启时该路径必然触发，任何未适配内容性 Mod 都会卡死战斗，不只 Act 4 Heart。
+
+修复（`RunSetupAfterRootCaptureBarrierAsync` 新增专用 catch）：内容性 Mod 未适配是已定义的搜索边界而非错误——调用 `SolverController.StopTurnSetupForIncompatibleMod` 走既有 `RecordTurnSetupFailure` 呈现（专用「暂未适配」提示、账本记 `IncompatibleGameplayMod`、不引导上传）并在 `SolverCombatSession` 上标记本战斗停止接管，然后 `InvokeOriginalSetupAsync` 回落原版回合准备，任务正常完成不重抛；后续回合 `TryInterceptSetup` 按停止标记直接放行原生路径。停止范围是单场战斗（会话随战斗生命周期重建）；手动搜索仍走搜索路径的既有优雅失败。未知异常保留原通知+重抛语义。
+
+验证：新场景 `INCOMPATIBLE-MOD-TURN-SETUP-STOP`（把敌方怪物映射到假 Mod、满足接管先决后穿过 Harmony 补丁驱动真实 `SetupPlayerTurn`）断言替换任务无异常、原版回合准备完成抽牌、停止标记设置、稳定失败通知恰好一次、同战斗不重试接管，随后完整搜索部署流程照常跑完；`TURN-SETUP-DELAYED-ENERGY`（原生回合准备全状态对账）与 `SMOKE-001`＋`-VerifyPredictionFailureBoundaries` 回归通过。未在真机安装 Act 4 Heart 复测第四层（场景以同构 mock 走同一协调器路径）；用户侧需重启游戏加载新 DLL 后生效。另观察到游戏根目录 `.combatsolver-precombat` 积累了 90 个历史 `process-*` 目录（含卡死会话残留），未清理，不属本修复范围。

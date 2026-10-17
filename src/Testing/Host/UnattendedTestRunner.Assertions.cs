@@ -181,6 +181,11 @@ internal sealed partial class UnattendedTestRunner
                 runner.SetStage("act4heart_compat");
                 await runner.AssertAct4HeartCompatAsync(scenario.CombatState, scenario.Player);
             }
+            if (request.ScenarioId == "INCOMPATIBLE-MOD-TURN-SETUP-STOP")
+            {
+                runner.SetStage("incompatible_mod_turn_setup_stop");
+                await runner.AssertIncompatibleModTurnSetupStopsSolverAsync(scenario.CombatState, scenario.Player);
+            }
             if (request.ScenarioId == "CYCLE-EXIT-REVOKED-PARENT")
             {
                 runner.SetStage("cycle_exit_revoked_parent");

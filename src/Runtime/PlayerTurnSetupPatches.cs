@@ -245,6 +245,7 @@ internal static class PlayerTurnSetupCoordinator
             || !_activeOperation.IsCompleted
             || !Entry.Enabled
             || SolverController.SolverDisabled
+            || SolverController.TurnSetupStoppedForIncompatibleMod
             || !SolverController.ShouldAutomaticallySearchNextTurn
             || SolverController.IsMultiplayerSession
             || SolverController.AutomaticSearchPaused
@@ -790,6 +791,19 @@ internal static class PlayerTurnSetupCoordinator
                 searchPolicy,
                 rootSnapshot,
                 SolvedRouteCache.Capture(combat, rootSnapshot, searchPolicy, battleDamage));
+        }
+        catch (IncompatibleGameplayModException incompatible)
+        {
+            // 未适配内容性 Mod 是已定义的搜索边界，不是错误：停止本战斗的求解器接管并回落
+            // 原版回合准备。这里被替换的回合准备任务就是游戏回合循环等待的那个任务，
+            // 异常一旦抛出会杀死回合循环并卡死战斗（Act 4 Heart 第四层即此路径）。
+            SearchCompletionNotifier.Notify(SearchCompletionNotificationKind.Failed);
+            SolverController.StopTurnSetupForIncompatibleMod(
+                combat,
+                SolverController.CombatLifecycleGeneration,
+                incompatible);
+            await InvokeOriginalSetupAsync(manager, turnState, player, choiceContext);
+            return;
         }
         catch
         {

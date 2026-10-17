@@ -12,6 +12,15 @@
 
 PR #213 的贡献者分阶段验证见 [Q002 历史入口](issues/q002-route-quality.md#0494-重新验证2026-10-05)。当前 0.50.0 主线整合使用 O003、O004、O005 同根、同政策对照，结果与复跑预算见 [当前验收](issues/q002-route-quality.md#0500-主线整合2026-10-05)。
 
+## 回合准备路径的内容性 Mod 停止
+
+`INCOMPATIBLE-MOD-TURN-SETUP-STOP` 把敌方怪物映射到假 gameplay Mod，满足接管先决（第 2 回合 + 消耗堆 Imbued 附魔牌）后穿过 Harmony 补丁驱动真实 `SetupPlayerTurn`：替换任务不得把 `IncompatibleGameplayModException` 带回游戏回合循环，原版回合准备完成抽牌，停止标记设置且稳定失败通知恰好一次，同战斗后续回合不重试接管；随后完整搜索部署流程照常跑完。修复前的失败基线即玩家报告的第四层战斗卡死。
+
+```text
+pwsh -NoProfile -File tools/testing/run-unattended-test.ps1 -ScenarioId INCOMPATIBLE-MOD-TURN-SETUP-STOP -EnemyCurrentHp 30 -Sts2GameRoot <游戏根目录> -RitsuWorkshopRoot <RitsuLib 工坊目录> -HeadlessInstance incompat-ts -CleanupInstanceOnExit
+./tools/testing/run-unattended-test.sh --scenario-id INCOMPATIBLE-MOD-TURN-SETUP-STOP --enemy-current-hp 30 --sts2-game-root <游戏根目录> --ritsu-workshop-root <RitsuLib 工坊目录> --headless-instance incompat-ts --cleanup-instance-on-exit
+```
+
 ## Act 4 Heart 前三层兼容层
 
 `ACT4HEART-COMPAT` 用同构 mock 类型（映射到 id="Act4Heart" 的 MockTypes Mod 与测试缝登记）走完整审计与适配路径：结构自检拒绝带额外战斗 hook 的订阅器、MVID 不匹配拒绝、未适配时根捕获抛 `IncompatibleGameplayModException`、登记后同一订阅者放行；金属化（敌方回合末格挡）与再生（AfterSideTurnEnd 治疗不递减）做模拟 vs 实机严格差分，玩家侧 Early 分发不记录未镜像风险，随后当回合搜索与部署完整跑通。复用进程重跑时跳过「未适配拒绝」阶段。测试宿主不安装真实 Act4Heart。

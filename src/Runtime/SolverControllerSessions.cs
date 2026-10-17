@@ -154,6 +154,7 @@ internal sealed class SolverCombatSession
     public bool ManualSearchAfterTurnSetupRequested { get; set; }
     public int? DeployAfterTurnSetupTurn { get; set; }
     public CombatState? TurnSetupResumeState { get; set; }
+    public bool TurnSetupStoppedForIncompatibleMod { get; set; }
     public Dictionary<ReplanCause, int> ReplanCounts { get; } = [];
     public HashSet<SolverResult> ReviewedWorldlineResults { get; } = [];
     public int SearchesStarted { get; set; }

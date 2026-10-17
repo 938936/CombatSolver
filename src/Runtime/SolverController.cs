@@ -463,6 +463,25 @@ internal static partial class SolverController
         return true;
     }
 
+    /// <summary>
+    /// 回合准备阶段的根捕获遇到未适配内容性 Mod 时按已定义边界停止：记录专用失败呈现、
+    /// 标记本战斗不再接管回合准备，由调用方回落原版回合准备；异常不得抛回游戏回合循环。
+    /// </summary>
+    internal static void StopTurnSetupForIncompatibleMod(
+        CombatState combat,
+        int lifecycleGeneration,
+        IncompatibleGameplayModException failure)
+    {
+        AssertMainThread();
+        if (RecordTurnSetupFailure(combat, lifecycleGeneration, failure))
+            _combat.TurnSetupStoppedForIncompatibleMod = true;
+    }
+
+    internal static bool TurnSetupStoppedForIncompatibleMod => _combat.TurnSetupStoppedForIncompatibleMod;
+
+    internal static void ClearTurnSetupIncompatibleModStopForTesting()
+        => _combat.TurnSetupStoppedForIncompatibleMod = false;
+
     internal static bool RecordTurnSetupStateMismatch(
         CombatState combat,
         int lifecycleGeneration,
