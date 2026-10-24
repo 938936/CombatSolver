@@ -23,11 +23,20 @@ pwsh -NoProfile -File tools/testing/run-unattended-test.ps1 -ScenarioId INCOMPAT
 
 ## Act 4 Heart 前三层兼容层
 
-`ACT4HEART-COMPAT` 用同构 mock 类型（映射到 id="Act4Heart" 的 MockTypes Mod 与测试缝登记）走完整审计与适配路径：结构自检拒绝带额外战斗 hook 的订阅器、MVID 不匹配拒绝、未适配时根捕获抛 `IncompatibleGameplayModException`、登记后同一订阅者放行；金属化（敌方回合末格挡）与再生（AfterSideTurnEnd 治疗不递减）做模拟 vs 实机严格差分，玩家侧 Early 分发不记录未镜像风险，随后当回合搜索与部署完整跑通。复用进程重跑时跳过「未适配拒绝」阶段。测试宿主不安装真实 Act4Heart。
+`ACT4HEART-COMPAT` 用同构 mock 类型（映射到 id="Act4Heart" 的 MockTypes Mod 与测试缝登记）走完整审计与适配路径：结构自检经纯校验缝拒绝带额外战斗 hook 的订阅器、MVID 不匹配拒绝且不影响已登记状态、未确认的额外 hook 订阅者被订阅者门禁拒绝（`IncompatibleGameplayModException` 带 Act4Heart 来源）、已确认订阅者放行并完成完整根捕获；金属化（敌方回合末格挡）与再生（AfterSideTurnEnd 治疗不递减）做模拟 vs 实机严格差分，玩家侧 Early 分发不记录未镜像风险，随后当回合搜索与部署完整跑通。登记在 runner 构造时完成（早于回合准备期间的自动根捕获）。测试宿主不安装真实 Act4Heart。
 
 ```text
 pwsh -NoProfile -File tools/testing/run-unattended-test.ps1 -ScenarioId ACT4HEART-COMPAT -EnemyCurrentHp 30 -Sts2GameRoot <游戏根目录> -RitsuWorkshopRoot <RitsuLib 工坊目录> -HeadlessInstance act4heart -CleanupInstanceOnExit
 ./tools/testing/run-unattended-test.sh --scenario-id ACT4HEART-COMPAT --enemy-current-hp 30 --sts2-game-root <游戏根目录> --ritsu-workshop-root <RitsuLib 工坊目录> --headless-instance act4heart --cleanup-instance-on-exit
+```
+
+## Act 4 Heart 第四层「终幕」
+
+`ACT4HEART-FINALE` 用同构 mock 怪物（SpireShield/SpireSpear/CorruptHeart，照抄 1.1.7 审计 IL）与 mock Power（BeatOfDeath/Invincible）走同一审计登记路径（runner 构造时完成，早于首个根捕获；行为开关由测试缝覆盖提供：降专注概率 0.5、末日转伤害开启）。场景体断言不可战胜的额度钳制、跨次累计与持有者一侧回合开始重置，以及末日改为被钳制的伤害而非击杀（实机侧以同构 Harmony Prefix 复刻原补丁后差分，测试进程内安装卸载）。行动差分由 `-MonsterMoveChecksPath` 驱动的检查数组执行（模拟侧 `ApplyForecastMove` vs 实机侧 `PerformMove` 全量快照对账）：覆盖三怪全部 10 个行动、状态机条件推进（`expectedNextMoveId`）、猛击的每怪物 Rng 消费对齐（有球/无球两态，含续用 MS 段对账）、死亡之搏（出牌反噬）、灼烧目标牌堆与重击格挡的进阶分支。A10（含背击 ×1.5、贯枪力量叠加与心脏增益滚雪球的伤害口径）用 `act4heart-finale-monster-moves.json`，非 A9 分支用 `act4heart-finale-monster-moves-a0.json`；两者本机均 Passed。怪物门禁的未适配拒绝路径由 `INCOMPATIBLE-MOD-TURN-SETUP-STOP` 与 ContentModFailures 场景维护。测试宿主不安装真实 Act4Heart；真实程序集行为未在真机验证。
+
+```text
+pwsh -NoProfile -File tools/testing/run-unattended-test.ps1 -ScenarioId ACT4HEART-FINALE -Ascension 10 -MonsterMoveChecksPath coverage/fixtures/third-party/act4heart-finale-monster-moves.json -Sts2GameRoot <游戏根目录> -RitsuWorkshopRoot <RitsuLib 工坊目录> -HeadlessInstance act4fin -CleanupInstanceOnExit
+pwsh -NoProfile -File tools/testing/run-unattended-test.ps1 -ScenarioId ACT4HEART-FINALE -MonsterMoveChecksPath coverage/fixtures/third-party/act4heart-finale-monster-moves-a0.json -Sts2GameRoot <游戏根目录> -RitsuWorkshopRoot <RitsuLib 工坊目录> -HeadlessInstance act4fin0 -CleanupInstanceOnExit
 ```
 
 ## Ctrl+F9 面板可见性（PR #226）

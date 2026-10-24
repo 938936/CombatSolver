@@ -64,10 +64,17 @@ internal sealed partial class SimulatedCombatState
     private readonly IReadOnlySet<Creature> _rootDeadCreatures;
     private readonly SerializableRunRngSet _runRngSnapshot;
     private readonly int _currentActIndex;
+    private readonly int _ascensionLevel;
     private readonly RoomType? _currentRoomType;
     private readonly MapCoord? _currentMapCoord;
     private readonly CardMultiplayerConstraint _cardMultiplayerConstraint;
     private readonly PredictionModHookSubscriberCapture _modHookSubscribers;
+    // Act 4 Heart：SpireShield 猛击对有球玩家读取的每怪物独立 Rng（原版 MonsterModel.Rng，
+    // 仅该 Mod 用作战斗判定）。根捕获时克隆实机实例，Fork 深拷贝；只对已审计 SpireShield 建条目。
+    private ForkableDictionary<Creature, MegaCrit.Sts2.Core.Random.Rng>? _monsterCombatRngs;
+    // Act 4 Heart：两项行为开关在根捕获时读取（对应怪物存在才需要），Fork 后视为常量。
+    private float _act4HeartShieldFocusDownOdds;
+    private bool _act4HeartDoomDamagesInsteadOfKills;
     internal AdaptedOnPlaySnapshot? AdaptedOnPlay => _modHookSubscribers.AdaptedOnPlay;
     internal bool HasInactiveLoadoutSummonPowers => _modHookSubscribers.HasInactiveLoadoutSummonPowers;
     internal bool RootHasOnlyNonHealingLoadoutSubscribers
@@ -257,6 +264,7 @@ internal sealed partial class SimulatedCombatState
         _runState = inner.RunState;
         _runRngSnapshot = inner.RunState.Rng.ToSerializable();
         _currentActIndex = inner.RunState.CurrentActIndex;
+        _ascensionLevel = inner.RunState.AscensionLevel;
         _currentRoomType = inner.RunState.CurrentRoom?.RoomType;
         _currentMapCoord = inner.RunState.CurrentMapCoord;
         _cardMultiplayerConstraint = inner.RunState.CardMultiplayerConstraint;
@@ -457,10 +465,13 @@ internal sealed partial class SimulatedCombatState
         _runState = source._runState;
         _runRngSnapshot = source._runRngSnapshot;
         _currentActIndex = source._currentActIndex;
+        _ascensionLevel = source._ascensionLevel;
         _currentRoomType = source._currentRoomType;
         _currentMapCoord = source._currentMapCoord;
         _cardMultiplayerConstraint = source._cardMultiplayerConstraint;
         _modHookSubscribers = source._modHookSubscribers;
+        _act4HeartShieldFocusDownOdds = source._act4HeartShieldFocusDownOdds;
+        _act4HeartDoomDamagesInsteadOfKills = source._act4HeartDoomDamagesInsteadOfKills;
         _rootMaxHandSizes = source._rootMaxHandSizes;
         _rootCardGenerationPools = source._rootCardGenerationPools;
         _rootTransformationPools = source._rootTransformationPools;
@@ -495,9 +506,33 @@ internal sealed partial class SimulatedCombatState
 
     public IRunState RunState => _runState;
     internal int CurrentActIndex => _currentActIndex;
+    internal int AscensionLevel => _ascensionLevel;
+    /// <summary>Act 4 Heart：SpireShield 猛击对有球玩家降专注的概率（根捕获值）。</summary>
+    internal float Act4HeartShieldFocusDownOdds => _act4HeartShieldFocusDownOdds;
+    /// <summary>Act 4 Heart：末日改为伤害而非击杀（根捕获值；默认关闭）。</summary>
+    internal bool Act4HeartDoomDamagesInsteadOfKills => _act4HeartDoomDamagesInsteadOfKills;
     internal RoomType? CurrentRoomType => _currentRoomType;
     internal MapCoord? CurrentMapCoord => _currentMapCoord;
     public CardMultiplayerConstraint CardMultiplayerConstraint => _cardMultiplayerConstraint;
+
+    /// <summary>
+    /// Act 4 Heart：怪物的战斗判定 Rng（MonsterModel.Rng 的分支克隆）。
+    /// 仅根捕获的已审计 SpireShield 有条目；根物化后缺失即显式失败。
+    /// </summary>
+    internal MegaCrit.Sts2.Core.Random.Rng GetMonsterCombatRng(Creature creature)
+    {
+        if (_monsterCombatRngs?.TryGetValue(creature, out MegaCrit.Sts2.Core.Random.Rng? rng) == true)
+            return rng;
+        if (_rootMaterialized && _rootCreatures.Contains(creature))
+            throw new InvalidOperationException($"Root monster combat rng was not captured for {creature.Name}.");
+        throw new InvalidOperationException($"生物 {creature.Name} 没有已捕获的怪物战斗 Rng。");
+    }
+
+    /// <summary>Act 4 Heart：预测侧怪物战斗 Rng 的当前状态（指纹与续用描述用；无条目时为 null）。</summary>
+    internal PredictionRngState? TryGetMonsterCombatRngState(Creature creature)
+        => _monsterCombatRngs?.TryGetValue(creature, out MegaCrit.Sts2.Core.Random.Rng? rng) == true
+            ? rng.CaptureState()
+            : null;
 
     bool ICombatPredictionCardGenerationPoolSnapshot.TryGetRootEligibleCards(
         Player player,
@@ -2140,6 +2175,18 @@ internal sealed partial class SimulatedCombatState
                 {
                     _ = GetMonsterInt(enemy, "SecondFormHp");
                     _ = GetMonsterInt(enemy, "ThirdFormHp");
+                }
+                // Act 4 Heart 第四层：私有 AI 字段由 DescribePredictedMonsterState 惰性捕获；
+                // 猛击的每怪物 Rng 与两项行为开关在这里显式捕获（主线程读实机实例）。
+                switch (Act4HeartCompat.GetFinaleMonsterKind(enemy.Monster))
+                {
+                    case Act4HeartCompat.FinaleMonsterKind.SpireShield:
+                        (_monsterCombatRngs ??= []).Add(enemy, enemy.Monster.Rng.Clone());
+                        _act4HeartShieldFocusDownOdds = Act4HeartCompat.ReadShieldFocusDownOdds();
+                        break;
+                    case Act4HeartCompat.FinaleMonsterKind.CorruptHeart:
+                        _act4HeartDoomDamagesInsteadOfKills = Act4HeartCompat.ReadDoomDamagesInsteadOfKills();
+                        break;
                 }
             }
             _ = DescribePredictedMonsterState(enemy);

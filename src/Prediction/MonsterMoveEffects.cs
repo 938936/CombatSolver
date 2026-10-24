@@ -22,6 +22,17 @@ internal static partial class MonsterMoveEffects
 
     public static bool Supports(MonsterModel monster, string moveId)
     {
+        // Act 4 Heart 第四层怪物按已审计运行时类型分派（与原版按名字的静态表互斥，
+        // 避免测试 mock 与真实 Mod 类型在名字上冲突）。
+        switch (Act4HeartCompat.GetFinaleMonsterKind(monster))
+        {
+            case Act4HeartCompat.FinaleMonsterKind.SpireShield:
+                return moveId is "BASH_MOVE" or "FORTIFY_MOVE" or "SMASH_MOVE";
+            case Act4HeartCompat.FinaleMonsterKind.SpireSpear:
+                return moveId is "BURN_STRIKE_MOVE" or "SKEWER_MOVE" or "PIERCER_MOVE";
+            case Act4HeartCompat.FinaleMonsterKind.CorruptHeart:
+                return moveId is "DEBILITATE_MOVE" or "BLOOD_SHOTS_MOVE" or "ECHO_MOVE" or "BUFF_MOVE";
+        }
         return (monster.GetType().Name, moveId) is
             ("SludgeSpinner", "OIL_SPRAY_MOVE") or
             ("SludgeSpinner", "RAGE_MOVE") or
@@ -171,6 +182,28 @@ internal static partial class MonsterMoveEffects
         ForecastMove move,
         Creature player)
     {
+        // Act 4 Heart 三怪的私有 state 字节在原版行动体里先于攻击更新（state |= N 位于
+        // DamageCmd 之前）；玩家死于攻击中途时效果段被跳过，但状态推进必须保留。
+        switch (Act4HeartCompat.GetFinaleMonsterKind(move.Owner.Monster!), move.Move.Id)
+        {
+            case (Act4HeartCompat.FinaleMonsterKind.SpireShield, "BASH_MOVE"):
+            case (Act4HeartCompat.FinaleMonsterKind.SpireSpear, "BURN_STRIKE_MOVE"):
+            case (Act4HeartCompat.FinaleMonsterKind.CorruptHeart, "BLOOD_SHOTS_MOVE"):
+                combat.SetMonsterInt(move.Owner, "state", combat.GetMonsterInt(move.Owner, "state") | 1);
+                break;
+            case (Act4HeartCompat.FinaleMonsterKind.SpireShield, "FORTIFY_MOVE"):
+            case (Act4HeartCompat.FinaleMonsterKind.SpireSpear, "PIERCER_MOVE"):
+            case (Act4HeartCompat.FinaleMonsterKind.CorruptHeart, "ECHO_MOVE"):
+                combat.SetMonsterInt(move.Owner, "state", combat.GetMonsterInt(move.Owner, "state") | 2);
+                break;
+            case (Act4HeartCompat.FinaleMonsterKind.SpireShield, "SMASH_MOVE"):
+            case (Act4HeartCompat.FinaleMonsterKind.SpireSpear, "SKEWER_MOVE"):
+            case (Act4HeartCompat.FinaleMonsterKind.CorruptHeart, "DEBILITATE_MOVE"):
+            case (Act4HeartCompat.FinaleMonsterKind.CorruptHeart, "BUFF_MOVE"):
+                combat.SetMonsterInt(move.Owner, "state", 0);
+                break;
+        }
+
         if (move.Owner.Monster is LivingFog && move.Move.Id == "BLOAT_MOVE")
         {
             int count = combat.GetMonsterStaticInt(move.Owner, "BloatAmount");
@@ -232,12 +265,16 @@ internal static partial class MonsterMoveEffects
         ForecastMove move,
         Creature player,
         out bool killedOwner,
-        IReadOnlyList<PlanCardChoice>? plannedChoices = null)
+        IReadOnlyList<PlanCardChoice>? plannedChoices = null,
+        int attackTotalDamage = 0)
     {
         killedOwner = false;
         MonsterModel monster = move.Owner.Monster!;
         string type = monster.GetType().Name;
         string id = move.Move.Id;
+
+        if (ApplyAct4HeartFinaleMove(simulator, combat, move, player, attackTotalDamage))
+            return true;
 
         combat.ResolveReviveMove(simulator, move.Owner, id);
         if (id == "STUNNED")
@@ -946,6 +983,122 @@ internal static partial class MonsterMoveEffects
             case ("TwoTailedRat", "SCREECH_MOVE"):
                 Debuff<FrailPower>(combat, player, 1, move.Owner);
                 return true;
+            default:
+                return false;
+        }
+    }
+
+    // Act 4 Heart 1.1.7 审计 IL 的行动效果。数值为该版本的常量（MVID 钉死，Mod 更新整层拒绝）；
+    // 进阶相关分支（燃身打击的目标牌堆、重击的固定格挡）读取根捕获的进阶等级。
+    private static bool ApplyAct4HeartFinaleMove(
+        CombatPredictionSimulator simulator,
+        SimulatedCombatState combat,
+        ForecastMove move,
+        Creature player,
+        int attackTotalDamage)
+    {
+        switch (Act4HeartCompat.GetFinaleMonsterKind(move.Owner.Monster!), move.Move.Id)
+        {
+            case (Act4HeartCompat.FinaleMonsterKind.SpireShield, "BASH_MOVE"):
+            {
+                bool focusDown = false;
+                if (player.Player is { } targetPlayer
+                    && simulator.State.GetPlayerCombatState(targetPlayer).OrbQueue.Capacity > 0)
+                {
+                    // 原版在第一个条件成立后才消耗怪物自带 Rng 的 NextFloat(1f)。
+                    float roll = combat.GetMonsterCombatRng(move.Owner).NextFloat(1f);
+                    focusDown = roll < combat.Act4HeartShieldFocusDownOdds;
+                }
+                if (focusDown)
+                    combat.Apply<FocusPower>(player, -1, move.Owner);
+                else
+                    combat.Apply<StrengthPower>(player, -1, move.Owner);
+                return true;
+            }
+            case (Act4HeartCompat.FinaleMonsterKind.SpireShield, "FORTIFY_MOVE"):
+            {
+                foreach (Creature teammate in combat.GetTeammatesOf(move.Owner))
+                    GainBlock(simulator, teammate, 30);
+                return true;
+            }
+            case (Act4HeartCompat.FinaleMonsterKind.SpireShield, "SMASH_MOVE"):
+            {
+                // A9：固定 99 点格挡（ValueProp 8）；非 A9：获得本次攻击总伤害（ValueProp 4，
+                // 原版两个分支使用了不同的 ValueProp，按审计 IL 保留）。
+                if (combat.AscensionLevel >= 9)
+                    simulator.GainBlock(move.Owner, 99, ValueProp.Move);
+                else
+                    simulator.GainBlock(move.Owner, attackTotalDamage, ValueProp.Unpowered);
+                return true;
+            }
+            case (Act4HeartCompat.FinaleMonsterKind.SpireSpear, "BURN_STRIKE_MOVE"):
+            {
+                // A9：2 张灼烧加入抽牌堆；非 A9 加入弃牌堆。均置于牌堆顶。
+                PileType burnPile = combat.AscensionLevel >= 9 ? PileType.Draw : PileType.Discard;
+                simulator.AddToCombat<Burn>(player, burnPile, 2, null, CardPilePosition.Top);
+                return true;
+            }
+            case (Act4HeartCompat.FinaleMonsterKind.SpireSpear, "SKEWER_MOVE"):
+            {
+                return true;
+            }
+            case (Act4HeartCompat.FinaleMonsterKind.SpireSpear, "PIERCER_MOVE"):
+            {
+                foreach (Creature teammate in combat.GetTeammatesOf(move.Owner))
+                    combat.Apply<StrengthPower>(teammate, 2, move.Owner);
+                return true;
+            }
+            case (Act4HeartCompat.FinaleMonsterKind.CorruptHeart, "DEBILITATE_MOVE"):
+            {
+                Debuff<VulnerablePower>(combat, player, 2, move.Owner);
+                Debuff<WeakPower>(combat, player, 2, move.Owner);
+                Debuff<FrailPower>(combat, player, 2, move.Owner);
+                // 五张状态牌按原版顺序各 1 张加入抽牌堆随机位置。
+                simulator.AddToCombat<Dazed>(player, PileType.Draw, 1, null, CardPilePosition.Random);
+                simulator.AddToCombat<Slimed>(player, PileType.Draw, 1, null, CardPilePosition.Random);
+                simulator.AddToCombat<Wound>(player, PileType.Draw, 1, null, CardPilePosition.Random);
+                simulator.AddToCombat<Burn>(player, PileType.Draw, 1, null, CardPilePosition.Random);
+                simulator.AddToCombat<global::MegaCrit.Sts2.Core.Models.Cards.Void>(player, PileType.Draw, 1, null, CardPilePosition.Random);
+                return true;
+            }
+            case (Act4HeartCompat.FinaleMonsterKind.CorruptHeart, "BLOOD_SHOTS_MOVE"):
+            {
+                return true;
+            }
+            case (Act4HeartCompat.FinaleMonsterKind.CorruptHeart, "ECHO_MOVE"):
+            {
+                return true;
+            }
+            case (Act4HeartCompat.FinaleMonsterKind.CorruptHeart, "BUFF_MOVE"):
+            {
+                if (combat.GetAmount<StrengthPower>(move.Owner) < 0)
+                    combat.SetAmount<StrengthPower>(move.Owner, 0);
+                combat.Apply<StrengthPower>(move.Owner, 2, move.Owner);
+                int buffCounter = combat.GetMonsterInt(move.Owner, "buff_counter") + 1;
+                combat.SetMonsterInt(move.Owner, "buff_counter", buffCounter);
+                switch (buffCounter)
+                {
+                    case 1:
+                        combat.Apply<ArtifactPower>(move.Owner, 2, move.Owner);
+                        break;
+                    case 2:
+                        Type? beatType = Act4HeartCompat.BeatOfDeathPowerType;
+                        if (beatType is null)
+                            throw new InvalidOperationException("腐化之心的增益行动缺少已审计的死亡之搏类型。");
+                        combat.ApplyPower(beatType, move.Owner, 1, move.Owner);
+                        break;
+                    case 3:
+                        combat.Apply<PainfulStabsPower>(move.Owner, 1, move.Owner);
+                        break;
+                    case 4:
+                        combat.Apply<StrengthPower>(move.Owner, 10, move.Owner);
+                        break;
+                    default:
+                        combat.Apply<StrengthPower>(move.Owner, 50, move.Owner);
+                        break;
+                }
+                return true;
+            }
             default:
                 return false;
         }

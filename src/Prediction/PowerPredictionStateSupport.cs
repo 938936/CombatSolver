@@ -62,6 +62,12 @@ internal static class PowerPredictionStateSupport
         // 上面这个 switch 按原版类型写死，第三方登记不进去。克隆会把 _internalData 重置成
         // InitInternalData()，所以靠它保存状态的第三方 Power 同样必须在这里把实机实例的值搬进
         // StateStore，否则模拟一开始读到的就是初值。
+        if (Act4HeartCompat.IsInvinciblePower(target))
+        {
+            // 与上面的原版分支同构：键是分支克隆，工厂从实机实例搬内部累计值。
+            _ = simulator.StateStore.GetReadOnly(
+                target, () => Act4HeartCompat.CreateInvinciblePredictionState(source));
+        }
         PowerHiddenStateMirrors.CaptureRootState(simulator, target, source);
     }
 }

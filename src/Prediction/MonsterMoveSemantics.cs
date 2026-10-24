@@ -89,13 +89,25 @@ internal static class MonsterMoveSemantics
                 combat.ForceStunnedMove(move.Owner);
             combat.StunNextMove(move.Owner);
         }
+        // Act 4 Heart 的 SpireShield SMASH 等效果需要本次攻击造成的总伤害（含被格挡部分）；
+        // 命中结果在攻击上下文中按执行顺序累积，与原版读取 AttackCommand.Results 的口径一致。
+        int attackTotalDamage = 0;
+        if (attackContext != null)
+        {
+            foreach (List<DamageResult> hit in attackContext.Results)
+            {
+                foreach (DamageResult damageResult in hit)
+                    attackTotalDamage += damageResult.TotalDamage;
+            }
+        }
         MonsterMoveEffects.Apply(
             simulator,
             combat,
             move,
             player,
             out bool killedOwner,
-            plannedChoices);
+            plannedChoices,
+            attackTotalDamage);
         if (simulator.HasPendingChoice)
             return simulatedPlayer.IsDead;
         if (killedOwner

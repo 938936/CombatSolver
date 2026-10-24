@@ -114,6 +114,14 @@ internal sealed partial class UnattendedTestRunner
             RegisterAdaptedOnPlayIntegration();
         if (request.ScenarioId.StartsWith("TURN-SETUP-UI-", StringComparison.Ordinal))
             InitializeTurnSetupControlCheck();
+        // Act4Heart 的回合阶段镜像有密封门：必须在首个根捕获（含回合准备期间的自动捕获）
+        // 之前完成登记，因此放在 runner 构造时而不是场景断言体里。
+        if (request.ScenarioId is "ACT4HEART-COMPAT" or "ACT4HEART-FINALE")
+        {
+            EnsureAct4HeartMocksAdopted();
+            if (request.ScenarioId == "ACT4HEART-FINALE")
+                Act4HeartCompat.SetTestConfigOverridesForTesting(0.5f, true);
+        }
         _protocolHost = protocolHost;
         _writer = new Writer(
             () => _request,

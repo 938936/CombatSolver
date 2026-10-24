@@ -304,11 +304,52 @@ internal static class BranchMonsterAi
         }
         if (monster == "BowlbugRock" && branch.Id == "POST_HEADBUTT")
             return "HEADBUTT_MOVE";
+        // Act 4 Heart 第四层三怪的 POST_ATTACK_BRANCH 与原版条件结构一致：先补位第一攻击位，
+        // 再补位第二位，两者都已打出后转重置行动。条件读分支内私有 state 字节。
+        if (branch.Id == "POST_ATTACK_BRANCH"
+            && Act4HeartCompat.GetFinaleMonsterKind(owner.Monster
+                ?? throw new InvalidOperationException("条件分支的持有者不是怪物。"))
+                is not Act4HeartCompat.FinaleMonsterKind.None)
+        {
+            int state = combat.GetMonsterInt(owner, "state");
+            if ((state & 1) == 0)
+                return FirstFinaleAttackMoveId(owner);
+            if ((state & 2) == 0)
+                return SecondFinaleMoveId(owner);
+            return ResetFinaleMoveId(owner);
+        }
         return source.Static.ConditionalSelections.TryGetValue(branch.Id, out string? selected)
             ? selected
             : throw new InvalidOperationException(
                 $"怪物 {source.Monster.Id.Entry} 的条件分支 {branch.Id} 没有根选择。");
     }
+
+    private static string FirstFinaleAttackMoveId(Creature owner)
+        => Act4HeartCompat.GetFinaleMonsterKind(owner.Monster!) switch
+        {
+            Act4HeartCompat.FinaleMonsterKind.SpireShield => "BASH_MOVE",
+            Act4HeartCompat.FinaleMonsterKind.SpireSpear => "BURN_STRIKE_MOVE",
+            Act4HeartCompat.FinaleMonsterKind.CorruptHeart => "BLOOD_SHOTS_MOVE",
+            _ => throw new InvalidOperationException("未审计的第四层怪物没有条件分支映射。"),
+        };
+
+    private static string SecondFinaleMoveId(Creature owner)
+        => Act4HeartCompat.GetFinaleMonsterKind(owner.Monster!) switch
+        {
+            Act4HeartCompat.FinaleMonsterKind.SpireShield => "FORTIFY_MOVE",
+            Act4HeartCompat.FinaleMonsterKind.SpireSpear => "PIERCER_MOVE",
+            Act4HeartCompat.FinaleMonsterKind.CorruptHeart => "ECHO_MOVE",
+            _ => throw new InvalidOperationException("未审计的第四层怪物没有条件分支映射。"),
+        };
+
+    private static string ResetFinaleMoveId(Creature owner)
+        => Act4HeartCompat.GetFinaleMonsterKind(owner.Monster!) switch
+        {
+            Act4HeartCompat.FinaleMonsterKind.SpireShield => "SMASH_MOVE",
+            Act4HeartCompat.FinaleMonsterKind.SpireSpear => "SKEWER_MOVE",
+            Act4HeartCompat.FinaleMonsterKind.CorruptHeart => "BUFF_MOVE",
+            _ => throw new InvalidOperationException("未审计的第四层怪物没有条件分支映射。"),
+        };
 
     private static float GetBranchWeight(
         RandomBranchState.StateWeight state,

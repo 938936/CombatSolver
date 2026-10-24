@@ -1,6 +1,7 @@
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Powers;
+using CombatSolver.Engine.Common;
 using System.Text;
 
 namespace CombatSolver;
@@ -72,16 +73,34 @@ internal sealed partial class SimulatedCombatState
     {
         foreach (Creature creature in KnownEnemies)
             _ = DescribePredictedMonsterState(creature);
-        if (_monsterIntStates == null)
+        if (_monsterIntStates == null && _monsterCombatRngs == null)
             return;
-        foreach (((Creature creature, string name), int value) in _monsterIntStates
-                     .OrderBy(item => item.Key.Creature.CombatId)
-                     .ThenBy(item => item.Key.Name, StringComparer.Ordinal))
+        if (_monsterIntStates != null)
         {
-            fingerprint.Add('m');
-            fingerprint.Add(creature.CombatId ?? uint.MaxValue);
-            fingerprint.Add(name);
-            fingerprint.Add(value);
+            foreach (((Creature creature, string name), int value) in _monsterIntStates
+                         .OrderBy(item => item.Key.Creature.CombatId)
+                         .ThenBy(item => item.Key.Name, StringComparer.Ordinal))
+            {
+                fingerprint.Add('m');
+                fingerprint.Add(creature.CombatId ?? uint.MaxValue);
+                fingerprint.Add(name);
+                fingerprint.Add(value);
+            }
+        }
+        if (_monsterCombatRngs != null)
+        {
+            foreach ((Creature creature, MegaCrit.Sts2.Core.Random.Rng rng) in _monsterCombatRngs
+                         .OrderBy(item => item.Key.CombatId))
+            {
+                PredictionRngState state = rng.CaptureState();
+                fingerprint.Add('r');
+                fingerprint.Add(creature.CombatId ?? uint.MaxValue);
+                fingerprint.Add(state.Counter);
+                fingerprint.Add(state.State0);
+                fingerprint.Add(state.State1);
+                fingerprint.Add(state.State2);
+                fingerprint.Add(state.State3);
+            }
         }
     }
 
@@ -109,6 +128,16 @@ internal sealed partial class SimulatedCombatState
 
     private string DescribePredictedMonsterState(Creature creature)
     {
+        switch (Act4HeartCompat.GetFinaleMonsterKind(creature.Monster
+                     ?? throw new InvalidOperationException("怪物状态描述的持有者不是怪物。")))
+        {
+            case Act4HeartCompat.FinaleMonsterKind.SpireShield:
+                return $"{GetMonsterInt(creature, "state")}:{DescribeMonsterCombatRng(TryGetMonsterCombatRngState(creature))}";
+            case Act4HeartCompat.FinaleMonsterKind.SpireSpear:
+                return GetMonsterInt(creature, "state").ToString();
+            case Act4HeartCompat.FinaleMonsterKind.CorruptHeart:
+                return $"{GetMonsterInt(creature, "state")},{GetMonsterInt(creature, "buff_counter")}";
+        }
         string type = creature.Monster?.GetType().Name ?? string.Empty;
         return type switch
         {
@@ -126,9 +155,23 @@ internal sealed partial class SimulatedCombatState
         string Bool(string name) => GetMonsterBool(creature, name) ? "1" : "0";
     }
 
+    private static string DescribeMonsterCombatRng(PredictionRngState? state)
+        => state is { } rng
+            ? $"{rng.Counter:x}:{rng.State0:x16}:{rng.State1:x16}:{rng.State2:x16}:{rng.State3:x16}"
+            : "-";
+
     private static string DescribeLiveMonsterState(Creature creature)
     {
         MonsterModel monster = creature.Monster!;
+        switch (Act4HeartCompat.GetFinaleMonsterKind(monster))
+        {
+            case Act4HeartCompat.FinaleMonsterKind.SpireShield:
+                return $"{MonsterValueReader.ReadInt(monster, "state")}:{DescribeMonsterCombatRng(monster.Rng.CaptureState())}";
+            case Act4HeartCompat.FinaleMonsterKind.SpireSpear:
+                return MonsterValueReader.ReadInt(monster, "state").ToString();
+            case Act4HeartCompat.FinaleMonsterKind.CorruptHeart:
+                return $"{MonsterValueReader.ReadInt(monster, "state")},{MonsterValueReader.ReadInt(monster, "buff_counter")}";
+        }
         return monster.GetType().Name switch
         {
             "FrogKnight" => Bool("_hasBeetleCharged"),

@@ -1,0 +1,157 @@
+[
+  {
+    "monsterId": "Act4HeartMockSpireShield",
+    "moveId": "BASH_MOVE",
+    "playerHpBefore": 80,
+    "playerBlockBefore": 0,
+    "rollNextMoveAfterActual": true,
+    "expectedNextMoveId": "FORTIFY_MOVE",
+    "expectedPlayerHpLoss": 21,
+    "expectedPlayerPowers": { "STRENGTH_POWER": -1 }
+  },
+  {
+    "monsterId": "Act4HeartMockSpireShield",
+    "moveId": "BASH_MOVE",
+    "playerHpBefore": 80,
+    "playerBlockBefore": 0,
+    "orbsBeforeMove": [ { "orbId": "LIGHTNING_ORB", "count": 1 } ],
+    "rollNextMoveAfterActual": true,
+    "expectedNextMoveId": "FORTIFY_MOVE",
+    "expectedPlayerHpLoss": 21,
+    "expectedPlayerOrbCapacity": 1
+  },
+  {
+    "monsterId": "Act4HeartMockSpireShield",
+    "moveId": "FORTIFY_MOVE",
+    "playerHpBefore": 80,
+    "rollNextMoveAfterActual": true,
+    "expectedNextMoveId": "SMASH_MOVE",
+    "expectedEnemyBlockGain": 30
+  },
+  {
+    "monsterId": "Act4HeartMockSpireShield",
+    "moveId": "SMASH_MOVE",
+    "playerHpBefore": 80,
+    "playerBlockBefore": 10,
+    "rollNextMoveAfterActual": true,
+    "expectedNextMoveId": "BASH_MOVE",
+    "expectedEnemyBlockGain": 99,
+    "expectedPlayerHpLoss": 47
+  },
+  {
+    "monsterId": "Act4HeartMockSpireSpear",
+    "moveId": "BURN_STRIKE_MOVE",
+    "playerHpBefore": 80,
+    "playerBlockBefore": 0,
+    "rollNextMoveAfterActual": true,
+    "expectedNextMoveId": "SKEWER_MOVE",
+    "expectedPlayerHpLoss": 12,
+    "expectedPlayerPileCards": { "Draw:BURN": 2 }
+  },
+  {
+    "monsterId": "Act4HeartMockSpireSpear",
+    "moveId": "PIERCER_MOVE",
+    "playerHpBefore": 80,
+    "rollNextMoveAfterActual": true,
+    "expectedNextMoveId": "SKEWER_MOVE",
+    "expectedEnemyPowers": { "STRENGTH_POWER": 2 }
+  },
+  {
+    "monsterId": "Act4HeartMockSpireSpear",
+    "moveId": "SKEWER_MOVE",
+    "playerHpBefore": 80,
+    "playerBlockBefore": 0,
+    "rollNextMoveAfterActual": true,
+    "expectedNextMoveId": "BURN_STRIKE_MOVE",
+    "expectedPlayerHpLoss": 48
+  },
+  {
+    "monsterId": "Act4HeartMockCorruptHeart",
+    "moveId": "DEBILITATE_MOVE",
+    "playerHpBefore": 80,
+    "playerBlockBefore": 0,
+    "rollNextMoveAfterActual": true,
+    "expectedNextMoveId": "BLOOD_SHOTS_MOVE",
+    "expectedPlayerHpLoss": 0,
+    "expectedPlayerPowers": {
+      "VULNERABLE_POWER": 2,
+      "WEAK_POWER": 2,
+      "FRAIL_POWER": 2
+    }
+  },
+  {
+    "monsterId": "Act4HeartMockCorruptHeart",
+    "moveId": "BLOOD_SHOTS_MOVE",
+    "playerHpBefore": 80,
+    "playerBlockBefore": 60,
+    "rollNextMoveAfterActual": true,
+    "expectedNextMoveId": "ECHO_MOVE"
+  },
+  {
+    "monsterId": "Act4HeartMockCorruptHeart",
+    "moveId": "ECHO_MOVE",
+    "playerHpBefore": 80,
+    "playerBlockBefore": 0,
+    "rollNextMoveAfterActual": true,
+    "expectedNextMoveId": "BUFF_MOVE"
+  },
+  {
+    "monsterId": "Act4HeartMockCorruptHeart",
+    "moveId": "BUFF_MOVE",
+    "playerHpBefore": 80,
+    "rollNextMoveAfterActual": true,
+    "expectedNextMoveId": "BLOOD_SHOTS_MOVE",
+    "expectedEnemyPowers": { "STRENGTH_POWER": 4, "ARTIFACT_POWER": 2 }
+  },
+  {
+    "monsterId": "Act4HeartMockCorruptHeart",
+    "moveId": "BUFF_MOVE",
+    "playerHpBefore": 80,
+    "rollNextMoveAfterActual": true,
+    "expectedNextMoveId": "BLOOD_SHOTS_MOVE",
+    "expectedEnemyPowers": { "STRENGTH_POWER": 6 }
+  },
+  {
+    "monsterId": "Act4HeartMockCorruptHeart",
+    "moveId": "BUFF_MOVE",
+    "playerHpBefore": 80,
+    "rollNextMoveAfterActual": true,
+    "expectedNextMoveId": "BLOOD_SHOTS_MOVE",
+    "expectedEnemyPowers": { "STRENGTH_POWER": 8, "PAINFUL_STABS_POWER": 1 }
+  },
+  {
+    "monsterId": "Act4HeartMockCorruptHeart",
+    "moveId": "BUFF_MOVE",
+    "playerHpBefore": 80,
+    "rollNextMoveAfterActual": true,
+    "expectedNextMoveId": "BLOOD_SHOTS_MOVE",
+    "expectedEnemyPowers": { "STRENGTH_POWER": 20 }
+  },
+  {
+    "monsterId": "Act4HeartMockCorruptHeart",
+    "moveId": "ECHO_MOVE",
+    "playerHpBefore": 80,
+    "playerBlockBefore": 60,
+    "cardBeforeMove": { "cardId": "STRIKE_IRONCLAD", "pile": "Hand", "count": 1 },
+    "cardPlayChecksBeforeMove": [ { "cardId": "STRIKE_IRONCLAD", "target": "Enemy", "expectedPlayable": true } ]
+  },
+  {
+    "monsterId": "Act4HeartMockSpireShield",
+    "moveId": "FORTIFY_MOVE",
+    "playerHpBefore": 80,
+    "enemyHpBefore": 100,
+    "clearPlayerHandBeforeMove": true,
+    "clearAllPowersBeforeMove": true,
+    "powerBeforeMove": { "powerId": "Act4HeartMockInvincible", "target": "Enemy", "amount": 3 },
+    "cardBeforeMove": { "cardId": "STRIKE_IRONCLAD", "pile": "Hand", "count": 1 },
+    "cardPlayChecksBeforeMove": [ { "cardId": "STRIKE_IRONCLAD", "target": "Enemy", "expectedPlayable": true } ]
+  },
+  {
+    "monsterId": "Act4HeartMockSpireShield",
+    "moveId": "FORTIFY_MOVE",
+    "playerHpBefore": 80,
+    "clearPlayerHandBeforeMove": true,
+    "cardBeforeMove": { "cardId": "STRIKE_IRONCLAD", "pile": "Hand", "count": 1 },
+    "cardPlayChecksBeforeMove": [ { "cardId": "STRIKE_IRONCLAD", "target": "Enemy", "expectedPlayable": true } ]
+  }
+]

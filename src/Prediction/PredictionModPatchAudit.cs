@@ -167,11 +167,17 @@ internal static class PredictionModPatchAudit
     {
         foreach (MonsterModel monster in monsters)
         {
-            _ = AssemblyInfo.ModForType(monster.GetType(), out bool isBaseGame);
-            if (!isBaseGame)
-                throw PredictionUnsupportedException.ForContent(
-                    $"Monster AI and move effects require a prediction implementation: {monster.GetType().FullName}.", monster.GetType());
-            RejectForeignPatches([AccessTools.Method(monster.GetType(), "GenerateMoveStateMachine")]);
+            Type type = monster.GetType();
+            // Act 4 Heart 第四层怪物由内置兼容层按 MVID 与 hook 覆盖集审计后放行；
+            // 其行动效果与私有 AI 字段由 MonsterMoveEffects / BranchMonsterAi 镜像。
+            if (!Act4HeartCompat.IsAdoptedFinaleMonster(type))
+            {
+                _ = AssemblyInfo.ModForType(type, out bool isBaseGame);
+                if (!isBaseGame)
+                    throw PredictionUnsupportedException.ForContent(
+                        $"Monster AI and move effects require a prediction implementation: {type.FullName}.", type);
+            }
+            RejectForeignPatches([AccessTools.Method(type, "GenerateMoveStateMachine")]);
         }
     }
 

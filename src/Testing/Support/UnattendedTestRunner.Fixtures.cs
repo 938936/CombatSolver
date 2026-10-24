@@ -734,6 +734,9 @@ internal sealed partial class UnattendedTestRunner
             throw new InvalidOperationException($"怪物 {input} 不唯一，请使用完整模型 ID。");
 
         Type[] exactTypes = typeof(MonsterModel).Assembly.GetTypes()
+            // 测试程序集里的 mock 怪物（Act4Heart 终幕合同等）不在任何遭遇表里，
+            // 但其规范实例已随模型注册进入 ModelDb.All。
+            .Concat(typeof(UnattendedTestRunner).Assembly.GetTypes())
             .Where(type => !type.IsAbstract
                 && typeof(MonsterModel).IsAssignableFrom(type)
                 && (type.Name.Equals(input, StringComparison.OrdinalIgnoreCase)

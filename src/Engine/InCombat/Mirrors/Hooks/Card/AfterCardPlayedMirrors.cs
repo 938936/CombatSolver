@@ -55,6 +55,14 @@ internal static class AfterCardPlayedMirrors
     internal static MirrorDispatchKind ResolveLateDispatchKind(AbstractModel listener)
         => LateRegistry.ResolveDispatchKind(listener);
 
+    /// <summary>
+    /// Registers <see cref="AbstractModel.AfterCardPlayed"/> for one runtime type; internal
+    /// counterpart of the generic registration used by the built-in Act 4 Heart compat layer.
+    /// </summary>
+    /// <remarks>Must finish before the first query or invocation: resolved type lookups are cached.</remarks>
+    internal static void RegisterMirror(Type modelType, Action<AbstractModel, AfterCardPlayedMirrorContext> handler)
+        => ThirdPartyMirrorRegistration.Register(Registry, modelType, handler);
+
     public static void CompleteOrAbort(
         CombatPredictionSimulator simulator,
         CardPlay cardPlay,

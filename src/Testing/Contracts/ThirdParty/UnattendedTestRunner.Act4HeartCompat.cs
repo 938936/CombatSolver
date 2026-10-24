@@ -21,60 +21,59 @@ internal sealed partial class UnattendedTestRunner
 {
     private static bool _act4HeartGateSubscribed;
     private static bool _act4HeartGateSubscriberActive;
+    private static bool _act4HeartGateForeignSubscriber;
     private static readonly Act4HeartMockGreenKeyHooks Act4HeartGateSubscriber = new();
+    private static readonly Act4HeartMockGreenKeyHooksWithCombatHook Act4HeartForeignGateSubscriber = new();
 
     // Act 4 Heart（创意工坊 3747537811）兼容层合同。测试宿主不安装真实 Mod，用同构 mock 类型
-    // 走适配层测试缝；结构自检、门禁与实际/模拟严格差分覆盖三类已审计内容。
-    // 复用进程重跑时（IsAdopted 已为真）跳过“未适配拒绝”阶段，其余断言全部照跑。
+    // 走适配层测试缝；结构自检、门禁与实际/模拟严格差分覆盖已审计内容。登记在 runner 构造时
+    // 完成（早于首个根捕获），因此结构拒绝走 VerifyAuditedTypesForTesting 纯校验缝，
+    // 订阅者门禁用「未确认的额外 hook 订阅者」验证拒绝路径。
     private async Task AssertAct4HeartCompatAsync(CombatState live, Player player)
     {
-        // A. 结构自检必须拒绝带额外战斗 hook 的订阅器，且不得留下部分登记。
+        if (!Act4HeartCompat.IsAdopted)
+            throw new InvalidOperationException("Act4Heart mock 兼容层没有在 runner 构造时登记。");
+
+        // A. 结构自检必须拒绝带额外战斗 hook 的订阅器（纯校验缝，不写入登记表）。
         try
         {
-            Act4HeartCompat.AdoptForTesting(
+            Act4HeartCompat.VerifyAuditedTypesForTesting(new Act4HeartCompat.Act4HeartAdoptedTypes(
                 typeof(Act4HeartMockGreenKeyHooksWithCombatHook),
                 typeof(Act4HeartMockMetallicize),
-                typeof(Act4HeartMockRegenerate));
-            throw new InvalidOperationException("结构自检接受了带额外战斗 hook 的订阅器。");
+                typeof(Act4HeartMockRegenerate),
+                typeof(Act4HeartMockSpireShield),
+                typeof(Act4HeartMockSpireSpear),
+                typeof(Act4HeartMockCorruptHeart),
+                typeof(Act4HeartMockBeatOfDeath),
+                typeof(Act4HeartMockInvincible)));
+            throw new InvalidOperationException("结构自检接受了带额外战斗 hook 的订阅者。");
         }
         catch (Act4HeartCompat.Act4HeartAuditException)
         {
         }
 
-        bool freshProcess = !Act4HeartCompat.IsAdopted;
-        if (freshProcess)
-        {
-            // B. MVID 不匹配的候选程序集不得被登记（静默回落到未适配）。
-            Act4HeartCompat.Adopt(typeof(Act4HeartMockMetallicize).Assembly, Guid.NewGuid());
-            if (Act4HeartCompat.IsAdopted)
-                throw new InvalidOperationException("MVID 不匹配的候选程序集被登记。");
+        // B. MVID 不匹配的候选程序集不得影响已登记状态（内部审计拒绝，不外抛）。
+        Act4HeartCompat.Adopt(typeof(Act4HeartMockMetallicize).Assembly, Guid.NewGuid());
+        if (!Act4HeartCompat.IsAdopted)
+            throw new InvalidOperationException("MVID 拒绝路径破坏了已登记的兼容层。");
 
-            EnsureAct4HeartGateSubscription();
-            // C1. 未适配时根捕获必须显式拒绝——这是引入兼容层之前的玩家可见行为。
-            using (Act4HeartGateSubscriberScope())
-            {
-                try
-                {
-                    _ = CombatRootSnapshot.Capture(live);
-                    throw new InvalidOperationException("未适配的 Act4Heart 订阅者没有被拒绝。");
-                }
-                catch (IncompatibleGameplayModException failure)
-                {
-                    if (failure.ModId != Act4HeartCompat.ModId)
-                        throw new InvalidOperationException("拒绝异常丢失了 Act4Heart 来源。");
-                }
-            }
-            Act4HeartCompat.AdoptForTesting(
-                typeof(Act4HeartMockGreenKeyHooks),
-                typeof(Act4HeartMockMetallicize),
-                typeof(Act4HeartMockRegenerate));
-        }
-        else
+        EnsureAct4HeartGateSubscription();
+        // C1. 未确认的订阅者（带额外战斗 hook）必须被订阅者门禁拒绝。
+        using (Act4HeartGateSubscriberScope(foreign: true))
         {
-            EnsureAct4HeartGateSubscription();
+            try
+            {
+                _ = CombatRootSnapshot.Capture(live);
+                throw new InvalidOperationException("未确认的 Act4Heart 订阅者没有被拒绝。");
+            }
+            catch (IncompatibleGameplayModException failure)
+            {
+                if (failure.ModId != Act4HeartCompat.ModId)
+                    throw new InvalidOperationException("拒绝异常丢失了 Act4Heart 来源。");
+            }
         }
         // C2. 登记后同一订阅者必须通过门禁并完成完整根捕获。
-        using (Act4HeartGateSubscriberScope())
+        using (Act4HeartGateSubscriberScope(foreign: false))
         {
             _ = CombatRootSnapshot.Capture(live);
         }
@@ -167,11 +166,11 @@ internal sealed partial class UnattendedTestRunner
         ModHelper.SubscribeForRunStateHooks(
             Act4HeartCompat.ModId,
             _ => _act4HeartGateSubscriberActive
-                ? [Act4HeartGateSubscriber]
+                ? [_act4HeartGateForeignSubscriber ? Act4HeartForeignGateSubscriber : Act4HeartGateSubscriber]
                 : Array.Empty<AbstractModel>());
     }
 
-    private IDisposable Act4HeartGateSubscriberScope()
+    private IDisposable Act4HeartGateSubscriberScope(bool foreign)
     {
         var previousMocks = AssemblyInfo.MockTypes;
         Mod mod = new()
@@ -182,12 +181,19 @@ internal sealed partial class UnattendedTestRunner
                 id = Act4HeartCompat.ModId, name = "Act 4 Heart [Test]", affectsGameplay = true,
             },
         };
+        // 订阅者类型必须映射到假 Act4Heart Mod：未映射的类型落在 CombatSolver 程序集上，
+        // 而 CombatSolver 清单声明 affects_gameplay=false，会被门禁直接信任放行。
+        Type subscriberType = foreign
+            ? Act4HeartForeignGateSubscriber.GetType()
+            : Act4HeartGateSubscriber.GetType();
         AssemblyInfo.MockTypes = previousMocks == null ? [] : new(previousMocks);
-        AssemblyInfo.MockTypes[Act4HeartGateSubscriber.GetType()] = (mod, false);
+        AssemblyInfo.MockTypes[subscriberType] = (mod, false);
         _act4HeartGateSubscriberActive = true;
+        _act4HeartGateForeignSubscriber = foreign;
         return new Act4HeartGateSubscriberRestore(() =>
         {
             _act4HeartGateSubscriberActive = false;
+            _act4HeartGateForeignSubscriber = false;
             AssemblyInfo.MockTypes = previousMocks;
         });
     }

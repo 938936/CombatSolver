@@ -36,6 +36,19 @@ Smart 无强制用药、主结果无药且根有可搜索药水时，在主搜�
 
 验证：`ACT4HEART-COMPAT` 无头场景（mock 同构类型经测试缝走同一审计与登记路径）覆盖结构自检拒绝、MVID 拒绝、未适配门禁拒绝、登记后放行、金属化/再生模拟 vs 实机严格差分、再生不递减、玩家侧 Early 分发无未镜像风险，并完整跑通当回合搜索与部署；`MIRRORED-HOOK-FILTER`、`SMOKE-001`＋`-VerifyPredictionFailureBoundaries` 回归通过。结构门禁通过。测试宿主不安装真实 Mod；真实程序集的 MVID/结构路径只能由审计常量本身约束，未在真机验证。
 
+### Act 4 Heart 第四层「终幕」内容适配
+
+在同一 MVID 审计层内扩展第四层三怪的完整模拟支持（用户显式要求）。`ValidateMonsterModels` 对已审计的 `SpireShield`/`SpireSpear`/`CorruptHeart` 精确类型放行怪物来源门禁（其 `GenerateMoveStateMachine` 上的外来补丁仍拒绝），行动效果进入 `MonsterMoveEffects`（按 `Act4HeartCompat.GetFinaleMonsterKind` 的已审计类型分派，不用类型名，避免测试 mock 与真实 Mod 类型同名冲突）：
+
+- 怪物私有 AI 字段（`state` 字节、腐化之心的 `buff_counter`）按 `GetMonsterInt` 惯例进 `_monsterIntStates`：`MaterializeRoot` 经 `DescribePredictedMonsterState` 惰性捕获，Fork 隔离，进入状态指纹与续用 MS 段。三怪的 `POST_ATTACK_BRANCH` 在 `BranchMonsterAi.ResolveConditional` 按分支 `state` 重解析（先补第一攻击位、再补第二位、双齐转重置行动）。
+- `SpireShield` 猛击对有球玩家读取怪物自带 `MonsterModel.Rng`（原版仅外观用，该 Mod 用作战斗判定）。根捕获时把实机实例克隆进新的 `_monsterCombatRngs`（`SimulatedCombatState` 成员），Fork 逐条深拷贝，镜像在消耗点调用 `NextFloat(1f)`；状态进指纹（`AppendMonsterStateFingerprint` 的 `r` 段）与续用描述。降专注概率 `spire_shield_orbs_focus_down_odds` 根捕获时经反射读取 `Act4Heart.ModMain.current_config`（测试缝显式覆盖）。重击非 A9 获得等于攻击总伤害的格挡（`MonsterMoveEffects.Apply` 新增 `attackTotalDamage` 参数，由 `MonsterMoveSemantics` 从攻击上下文累计），A9 固定 99；两个分支的 ValueProp 按审计 IL 分别为 4/8。
+- `BeatOfDeathPower`（每次出牌对出牌者造成 Amount 伤害）经 `AfterCardPlayedMirrors.RegisterMirror(Type, handler)` 登记；`InvinciblePower`（按回合累计的掉血上限，语义等同原版 HardenedShell 但重置带 side 检查、钳制相位为 AfterOstyLate）经 `AfterDamageReceivedMirrors.RegisterMirror`、`ModifyHpLostMirrors.RegisterAfterOstyLateMirror`、`BeforeSideTurnStartMirrors.Register(Type, handler)` 三处登记；隐藏状态 `damage_recieved_this_turn_shared` 按名反射搬进 `Act4HeartInvinciblePredictionState`（多人分池显式拒绝）。`BUFF_MOVE` 在搜索中给已存在的死亡之搏叠层会克隆规范实例，`BeatOfDeathPower` 需 `PowerDynamicVarWarmup.RegisterAdaptedCanonicalPower` 预热。
+- 该 Mod 的 `DoomKill` HookBefore 补丁（`heart_doom_damages_instead_of_kills` 开启时，持有 Invincible 且当前生命超过剩余额度的生物改为承受末日数值伤害）在 `SimulatedCombatState.DoomKill` 建模：倒序转换、死亡统计按过滤后名单；开关根捕获时同源读取，默认关闭时零行为差异。
+
+行动效果数值为 1.1.7 审计 IL 常量（MVID 钉死）；燃身打击的灼烧目标牌堆与重击格挡分支读根捕获的 `AscensionLevel`（`SimulatedCombatState` 新增快照字段，构造时从 `RunState` 读取）。三怪的私有 `state` 字节在原版行动体里先于攻击更新（`state |= N` 位于 `DamageCmd` 之前），镜像相应放在 `ApplyBeforeAttack`：玩家死于攻击中途时 `ApplyForecastMove` 跳过效果段，但状态推进与实机保持一致，否则条件分支在死亡边界分叉。
+
+验证：新场景 `ACT4HEART-FINALE`（同构 mock 怪物/Power 走同一审计与登记路径；登记与行为开关覆盖在 runner 构造时完成——回合阶段镜像有密封门，场景断言体内的迟到登记会被回合准备期间的自动根捕获拒绝）：场景体覆盖不可战胜钳制/累计/持有者回合开始重置与末日转伤害（实机侧以同构 Harmony Prefix 复刻原补丁后差分，测试进程内安装卸载）；行动差分由 `coverage/fixtures/third-party/act4heart-finale-monster-moves.json`（A10，17 项检查：含每怪物 Rng 消费对齐与续用 MS 段对账、状态机条件推进、死亡之搏、BURN 进抽牌堆、重击 99 格挡、注入小额度不可战胜的钳制/累计）与 `act4heart-finale-monster-moves-a0.json`（非 A9 分支：灼烧进弃牌堆、重击按总伤害获得格挡、额度 300 的重置与末日口径）驱动，两者本机均 Passed。伤害口径注意：矛与盾的出生 `BackAttack*Power`+`SurroundedPower` 使盾侧攻击 ×1.5（猛击 21/重击 57）、矛侧正面无倍率；贯枪给全体敌人 +2 力量会滚入后续检查的心脏伤害与增益数值。`ACT4HEART-COMPAT` 重构后回归通过（结构拒绝改走 `VerifyAuditedTypesForTesting` 纯校验缝，订阅者门禁拒绝改用「未确认的额外 hook 订阅者」——CombatSolver 清单声明 `affects_gameplay=false`，未映射到假 Mod 的测试类型会被门禁直接信任放行）；`MONSTER-MOVES-B004` 原版怪物行动差分回归通过（覆盖 `MonsterMoveSemantics` 攻击总伤害参数与 `ApplyBeforeAttack` 前置状态块的原版路径）。`verify-refactor-boundaries` 因本机缺少 ripgrep 未运行；CoverageCatalog `--verify` 在未改动基线同样失败（InfusedCore 运行证据等 3 项预存缺口，与本批无关），生成目录保持历史结果。测试宿主不安装真实 Mod；真实程序集行为未在真机验证（MVID/结构由审计常量约束）。
+
 ### 回合准备路径的内容性 Mod 停止（修复战斗卡死）
 
 玩家报告：装 Act 4 Heart 进入第四层时，`IncompatibleGameplayModException`（`ValidateMonsterModels` 正确拒绝 `Act4Heart.SpireShield`）从回合准备协调器逃逸，杀死游戏回合循环，战斗卡死直到重开房间。根因：`PlayerTurnSetupPatch` 用求解器的回合准备任务**替换**了游戏 `SetupPlayerTurn`；初始上下文构造（含 `CombatRootSnapshot.Capture`）里的通用 catch 只通知 Failed 后原样重抛，而怪物门禁、订阅者门禁与 OnPlay 补丁门禁都在捕获内抛 `IncompatibleGameplayModException`——自动计算或全自动开启时该路径必然触发，任何未适配内容性 Mod 都会卡死战斗，不只 Act 4 Heart。

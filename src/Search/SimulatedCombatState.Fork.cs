@@ -88,6 +88,13 @@ internal sealed partial class SimulatedCombatState
             _deathSaveUseCount = _deathSaveUseCount,
         };
 
+        if (_monsterCombatRngs is not null)
+        {
+            // Rng 是可变实例：Fork 必须逐条深拷贝当前状态，不能与父分支共享实例。
+            fork._monsterCombatRngs = [];
+            foreach ((MegaCrit.Sts2.Core.Entities.Creatures.Creature creature, MegaCrit.Sts2.Core.Random.Rng rng) in _monsterCombatRngs)
+                fork._monsterCombatRngs.Add(creature, rng.Clone());
+        }
         if (_addedPowerInstances is not null)
         {
             List<PowerModel> addedPowerInstances = new(_addedPowerInstances.Count);

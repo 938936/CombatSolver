@@ -74,6 +74,16 @@ internal static class ModifyHpLostMirrors
             : InvokeOriginalAfterOstyLate(listener, context);
     }
 
+    /// <summary>
+    /// Registers <see cref="AbstractModel.ModifyHpLostAfterOstyLate"/> for one runtime type; internal
+    /// counterpart of the generic registration used by the built-in Act 4 Heart compat layer.
+    /// </summary>
+    /// <remarks>Must finish before the first query or invocation: resolved type lookups are cached.</remarks>
+    internal static void RegisterAfterOstyLateMirror(
+        Type modelType,
+        Func<AbstractModel, ModifyHpLostMirrorContext, decimal> handler)
+        => ThirdPartyMirrorRegistration.RegisterResult(AfterOstyLateRegistry, modelType, handler);
+
     private static decimal InvokeOriginalBeforeOsty(
         AbstractModel listener,
         ModifyHpLostMirrorContext context)

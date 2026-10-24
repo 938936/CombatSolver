@@ -54,6 +54,14 @@ internal static class AfterDamageReceivedMirrors
         LateRegistry.Invoke(listener, context);
     }
 
+    /// <summary>
+    /// Registers <see cref="AbstractModel.AfterDamageReceived"/> for one runtime type; internal
+    /// counterpart of the generic registration used by the built-in Act 4 Heart compat layer.
+    /// </summary>
+    /// <remarks>Must finish before the first query or invocation: resolved type lookups are cached.</remarks>
+    internal static void RegisterMirror(Type modelType, Action<AbstractModel, AfterDamageReceivedMirrorContext> handler)
+        => ThirdPartyMirrorRegistration.Register(Registry, modelType, handler);
+
     private static Registry CreateRegistry()
     {
         var registry = new Registry(AfterDamageReceived);
