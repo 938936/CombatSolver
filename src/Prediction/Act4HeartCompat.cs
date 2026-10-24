@@ -7,6 +7,7 @@ using MegaCrit.Sts2.Core.ValueProps;
 using CombatSolver.Engine.Common;
 using CombatSolver.Engine.InCombat.Mirrors.Hooks.Card;
 using CombatSolver.Engine.InCombat.Mirrors.Hooks.Damage;
+using CombatSolver.Engine.InCombat.Mirrors.Hooks.Death;
 using CombatSolver.Engine.InCombat.Mirrors.Hooks.TurnEnd;
 using CombatSolver.Engine.InCombat.Mirrors.Hooks.TurnStart;
 using CombatSolver.Engine.InCombat.Simulation;
@@ -212,6 +213,9 @@ internal static class Act4HeartCompat
         AfterDamageReceivedMirrors.RegisterMirror(types.Invincible, HandleInvincibleAfterDamageReceived);
         ModifyHpLostMirrors.RegisterAfterOstyLateMirror(types.Invincible, HandleInvincibleModifyHpLost);
         BeforeSideTurnStartMirrors.Register(types.Invincible, HandleInvincibleBeforeSideTurnStart);
+        // 腐化之心的 AfterDeath 只做音乐更新（纯表现）。不登记会在击杀时产生未补偿死亡缺口，
+        // 把完整胜利降级为 UnsupportedEffect 边界，导致战斗终局回合为空、预计战损显示「未知」。
+        AfterDeathMirrors.RegisterIgnoredMirror(types.CorruptHeart);
         // BUFF_MOVE 会在搜索中给已存在的死亡之搏叠加层数，叠加路径克隆规范实例并读取其
         // DynamicVars；规范实例必须在主线程建根时提前物化。
         PowerDynamicVarWarmup.RegisterAdaptedCanonicalPower(types.BeatOfDeath);

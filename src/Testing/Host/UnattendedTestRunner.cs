@@ -120,7 +120,10 @@ internal sealed partial class UnattendedTestRunner
         {
             EnsureAct4HeartMocksAdopted();
             if (request.ScenarioId == "ACT4HEART-FINALE")
+            {
                 Act4HeartCompat.SetTestConfigOverridesForTesting(0.5f, true);
+                MapAct4HeartFinaleMocksToAct4HeartMod();
+            }
         }
         _protocolHost = protocolHost;
         _writer = new Writer(

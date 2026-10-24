@@ -153,7 +153,16 @@ internal static class IntentForecaster
     }
 
     private static bool IsKnownStableAttack(MonsterModel monster, string moveId)
-        => (monster.GetType().Name, moveId) is
+    {
+        // Act 4 Heart 终幕三怪的攻击意图全部由审计 IL 常量构造（MVID 钉死）；
+        // 原版 AttackIntent(int) 的 DamageCalc lambda 捕获构造参数会让 Target 非空，
+        // 若不在此放行会被误判为「动态伤害」并压低置信度。
+        if (Act4HeartCompat.GetFinaleMonsterKind(monster) is not Act4HeartCompat.FinaleMonsterKind.None)
+        {
+            return moveId is "BASH_MOVE" or "SMASH_MOVE" or "BURN_STRIKE_MOVE" or "SKEWER_MOVE"
+                or "BLOOD_SHOTS_MOVE" or "ECHO_MOVE";
+        }
+        return (monster.GetType().Name, moveId) is
             ("PhantasmalGardener", "BITE_MOVE" or "LASH_MOVE" or "FLAIL_MOVE") or
             ("FuzzyWurmCrawler", "FIRST_ACID_GOOP" or "ACID_GOOP") or
             ("BowlbugNectar", "THRASH_MOVE" or "THRASH2_MOVE") or
@@ -262,6 +271,7 @@ internal static class IntentForecaster
             ("TestSubject", "BITE_MOVE" or "SKULL_BASH_MOVE" or "MULTI_CLAW_MOVE"
                 or "PHASE3_LACERATE_MOVE" or "BIG_POUNCE") or
             ("WaterfallGiant", "STOMP_MOVE" or "RAM_MOVE" or "PRESSURE_GUN_MOVE" or "PRESSURE_UP_MOVE");
+    }
 
     private static MoveState RollNext(
         Cursor cursor,

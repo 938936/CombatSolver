@@ -32,6 +32,15 @@ internal static class AfterDeathMirrors
         Registry.Invoke(listener, context);
     }
 
+    /// <summary>
+    /// Registers <see cref="AbstractModel.AfterDeath"/> for one runtime type as reviewed
+    /// presentation-only; internal counterpart of the generic registration used by the built-in
+    /// Act 4 Heart compat layer.
+    /// </summary>
+    /// <remarks>Must finish before the first query or invocation: resolved type lookups are cached.</remarks>
+    internal static void RegisterIgnoredMirror(Type modelType)
+        => Registry.RegisterIgnored(modelType);
+
     private static Registry CreateRegistry()
     {
         var registry = new Registry(AfterDeath);

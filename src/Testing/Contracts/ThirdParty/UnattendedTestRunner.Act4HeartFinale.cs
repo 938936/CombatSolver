@@ -49,7 +49,40 @@ internal sealed partial class UnattendedTestRunner
         //    Harmony Prefix 复刻（原 Mod 未安装）。
         await DiffAct4HeartDoomConversionAsync(live, player, heart);
 
+        // C. 击杀腐化之心的完整胜利必须带战斗终局回合：AfterDeath 已按纯表现登记，
+        //    未补偿死亡缺口会把胜利终局降级为 UnsupportedEffect，导致预计战损显示「未知」。
+        await AssertAct4HeartFinaleVictoryTerminalAsync(live, player, heart);
+
         _completedChecks.Add("Act4HeartFinale:InvincibleClamp:InvincibleReset:DoomConversion");
+    }
+
+    private async Task AssertAct4HeartFinaleVictoryTerminalAsync(CombatState live, Player player, Creature heart)
+    {
+        // 其余敌人在默认请求下已是 1 HP；把心脏也压到可速胜血量后跑正式搜索。
+        await CreatureCmd.SetCurrentHp(heart, 10);
+        SolverDisplayNames displayNames = SolverDisplayNames.Capture(live);
+        BattleDamageSnapshot battleDamage = BattleDamageTracker.Observe(live);
+        SearchPolicySnapshot searchPolicy = SolverController.CaptureSearchPolicy(
+            SolverSettings.Capture(),
+            live,
+            includeTurnSetup: false,
+            theftPolicy: SolverController.ResolveTheftPolicy(live));
+        CombatRootSnapshot rootSnapshot = CombatRootSnapshot.Capture(live);
+        SolverResult result = await Task.Run(() => new CombatBeamSolver(
+            rootSnapshot, displayNames, battleDamage, searchPolicy).Solve());
+        if (!result.Snapshot.AllEnemiesDead || result.Snapshot.PlayerDead)
+            throw new InvalidOperationException(
+                $"终幕速胜搜索没有拿到完整胜利：全灭={result.Snapshot.AllEnemiesDead} " +
+                $"阵亡={result.Snapshot.PlayerDead} 边界={result.BoundaryReason}。");
+        if (result.BoundaryReason == SearchBoundaryReason.UnsupportedEffect)
+            throw new InvalidOperationException("击杀腐化之心的胜利终局被未补偿死亡缺口降级为 UnsupportedEffect。");
+        if (result.CombatEndedTurn is not { } endedTurn)
+            throw new InvalidOperationException("完整胜利路线缺少战斗终局回合（预计战损会显示「未知」）。");
+        int currentTurn = player.PlayerCombatState?.TurnNumber
+            ?? throw new InvalidOperationException("终幕搜索断言找不到玩家回合。");
+        if (endedTurn < currentTurn)
+            throw new InvalidOperationException($"战斗终局回合 {endedTurn} 早于当前回合 {currentTurn}。");
+        _completedChecks.Add($"Act4HeartFinale:VictoryTerminal:T{endedTurn}");
     }
 
     private static void EnsureAct4HeartMocksAdopted()
@@ -65,6 +98,39 @@ internal sealed partial class UnattendedTestRunner
             typeof(Act4HeartMockCorruptHeart),
             typeof(Act4HeartMockBeatOfDeath),
             typeof(Act4HeartMockInvincible)));
+    }
+
+    private static bool _act4HeartFinaleMocksMapped;
+
+    /// <summary>
+    /// 把终幕 mock 怪物/Power 映射到 id=Act4Heart、affectsGameplay=true 的假 Mod。
+    /// CombatSolver 清单声明 affects_gameplay=false，未映射的测试类型会被镜像注册表
+    /// （MethodMirrorRegistry.ResolveLookupUnderLock）直接当非 gameplay 覆写忽略，
+    /// 掩盖「真实 gameplay Mod 的覆写未登记镜像」路径（如腐化之心的 AfterDeath
+    /// 未登记时把完整胜利降级为 UnsupportedEffect、预计战损显示未知）。
+    /// 映射后未登记的 mock 覆写与真实 Mod 一致走 Unsupported 并记录未补偿风险。
+    /// </summary>
+    private static void MapAct4HeartFinaleMocksToAct4HeartMod()
+    {
+        if (_act4HeartFinaleMocksMapped)
+            return;
+        _act4HeartFinaleMocksMapped = true;
+        var previousMocks = AssemblyInfo.MockTypes;
+        AssemblyInfo.MockTypes = previousMocks == null ? [] : new(previousMocks);
+        Mod mod = new()
+        {
+            path = "act4heart-finale-test",
+            manifest = new ModManifest
+            {
+                id = Act4HeartCompat.ModId, name = "Act 4 Heart [Test]", affectsGameplay = true,
+            },
+        };
+        AssemblyInfo.MockTypes[typeof(Act4HeartMockSpireShield)] = (mod, false);
+        AssemblyInfo.MockTypes[typeof(Act4HeartMockSpireSpear)] = (mod, false);
+        AssemblyInfo.MockTypes[typeof(Act4HeartMockCorruptHeart)] = (mod, false);
+        AssemblyInfo.MockTypes[typeof(Act4HeartMockBeatOfDeath)] = (mod, false);
+        AssemblyInfo.MockTypes[typeof(Act4HeartMockInvincible)] = (mod, false);
+        // 映射持续到进程结束（单场景进程），不恢复。
     }
 
     private async Task DiffAct4HeartInvincibleResetAsync(CombatState live, Player player, Creature heart)
