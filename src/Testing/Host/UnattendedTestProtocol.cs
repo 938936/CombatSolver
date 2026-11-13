@@ -51,6 +51,9 @@ internal sealed class UnattendedTestRequest
     public string? EvidenceDirectory { get; init; }
     public bool PreserveNativeCombatStateForTest { get; init; }
     public int Ascension { get; init; }
+    public MegaCrit.Sts2.Core.Runs.GameMode GameMode { get; init; } = MegaCrit.Sts2.Core.Runs.GameMode.Standard;
+    public string? DreadBossEncounterId { get; init; }
+    public string[] DominionIdsForTest { get; init; } = [];
     public int ActIndexForTest { get; init; }
     public bool MarkEncounterAsSecondBossForTest { get; init; }
     public int EnemyCurrentHp { get; init; } = 1;
@@ -612,6 +615,8 @@ internal sealed class UnattendedSolverMetrics
     public double ElapsedMilliseconds { get; init; }
     public double TotalElapsedMilliseconds { get; init; }
     public SearchWorkAttribution[] SearchWorkAttributions { get; init; } = [];
+    public BossTempoSearchTelemetry? BossTempoSearch { get; init; }
+    public BossTempoIterationTelemetry? BossTempoIteration { get; init; }
     public long WorkerAllocatedBytes { get; init; }
     public long TotalWorkerAllocatedBytes { get; init; }
     public int TotalGen0Collections { get; init; }

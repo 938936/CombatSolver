@@ -11,7 +11,7 @@ internal static partial class MonsterMoveEffects
             ["ToughEgg"] = ["HatchlingMinHp", "HatchlingMaxHp"],
             ["TestSubject"] = ["BurningGrowlBurnCount", "BurningGrowlStrengthGain"],
             ["BowlbugEgg"] = ["ProtectBlock"],
-            ["InfestedPrism"] = ["RadiateBlock", "PulsateBlock", "VitalSparkAmount"],
+            ["InfestedPrism"] = ["VitalSparkAmount"],
             ["KinFollower"] = ["DanceStrength"],
             ["KinPriest"] = ["RitualStrength"],
             ["KnowledgeDemon"] = ["PonderStrength"],
@@ -29,7 +29,8 @@ internal static partial class MonsterMoveEffects
             ["CeremonialBeast"] = ["PlowStrength", "CrushStrength", "PlowAmount"],
             ["Ovicopter"] = ["NutritionalPasteStrengthAmount"],
             ["SkulkingColony"] = ["InertiaStrengthGain"],
-            ["TheInsatiable"] = ["SalivateStrength"],
+            ["TheInsatiable"] = ["SalivateStrength", "SandpitAmount"],
+            ["Vantom"] = ["PrepareStrength"],
             ["TheObscura"] = ["HardeningStrikeBlock"],
             ["TheForgotten"] = ["DebilitatingSmogDexStealAmount"],
             ["LouseProgenitor"] = ["CurlBlock", "GrowStrength"],
@@ -40,8 +41,7 @@ internal static partial class MonsterMoveEffects
             ["Axebot"] = ["BootUpBlock", "BootUpStrGain", "RespawnCount"],
             ["Aeonglass"] = ["EbbBlock", "WitherAmount", "IncreasingIntensityBaseStrength"],
             ["AxeRubyRaider"] = ["SwingBlock"],
-            ["DevotedSculptor"] = ["_ritualGain"],
-            ["WaterfallGiant"] = ["PressurizeAmount", "SiphonHeal", "PressureGunIncrease"],
+            ["WaterfallGiant"] = ["PressurizeAmount", "SiphonHeal", "PressureGunIncrease", "SteamBoostAmount"],
         };
 
     internal static IReadOnlyDictionary<string, int> CaptureStaticIntValues(MonsterModel monster)

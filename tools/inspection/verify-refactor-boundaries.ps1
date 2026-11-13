@@ -871,7 +871,7 @@ foreach ($check in @(
     @{ RelativePath = "src/Search/CombatBeamSolver.ParallelExpansion.cs"; Text = "new(_run.ExpansionBatchPool)" },
     @{ RelativePath = "src/Engine/InCombat/Simulation/CombatPredictionRngSet.cs"; Text = "private sealed class FrozenStream(PredictionRngState state)" },
     @{ RelativePath = "src/Engine/InCombat/Simulation/CombatPredictionRngSet.cs"; Text = "new FrozenStream(_mutable.CaptureState())" },
-    @{ RelativePath = "src/Testing/Host/UnattendedTestRunner.Assertions.cs"; Text = "AssertLazyRngFork(scenario.CombatState.RunState.Rng)" },
+    @{ RelativePath = "src/Testing/Host/UnattendedTestRunner.Assertions.cs"; Text = "AssertLazyRngFork(scenario.CombatState.RunState.Rng, scenario.Player)" },
     @{ RelativePath = "src/Search/CombatBeamSolver.StateEvaluation.cs"; Text = "AppendRngState(ref key, simulator.Rng.ShuffleState);" },
     @{ RelativePath = "src/Runtime/ContinuationStamp.cs"; Text = "simulator.Rng.ShuffleState" },
     @{ RelativePath = "src/Search/CombatBeamSolver.StateEvaluation.cs"; Text = "AppendRngState(ref key, simulator.Rng.CombatCardGenerationState);" },
@@ -1094,6 +1094,7 @@ $expectedBeamFiles = @(
     "CombatBeamSolver.FinalPlanOrdering.cs",
     "CombatBeamSolver.Models.cs",
     "CombatBeamSolver.NoveltySearch.cs",
+    "CombatBeamSolver.BossTempo.cs",
     "CombatBeamSolver.Transpositions.cs",
     "CombatBeamSolver.OrderedMutationRetention.cs",
     "CombatBeamSolver.ParallelExpansion.cs",
@@ -1397,7 +1398,7 @@ $beamPhasesPath = Join-Path $searchRoot "CombatBeamSolver.Phases.cs"
 foreach ($healingBoundary in @(
     @('src/Search/CombatBeamSolver.Retention.cs', '_strictHpBoundWithRelicTargets = CanUseStrictHpRelicBound(root, policy)'),
     @('src/Search/CombatBeamSolver.Retention.cs', 'targets.All(target => target.HpAllowance == 0)'),
-    @('src/Search/CombatBeamSolver.Retention.cs', 'allowTurnTieBound: !_strictHpBoundWithRelicTargets'),
+    @('src/Search/CombatBeamSolver.Retention.cs', 'allowTurnTieBound: policy.BossTempoSearch == null && !_strictHpBoundWithRelicTargets'),
     @('src/Search/CombatSearchCoordinator.cs', '!CombatBeamSolver.CanUseStrictHpRelicBound(root, policy)'),
     @('src/Search/CombatSearchCoordinator.PlanSearch.cs', 'if (!root.CanCertifyRemainingHealing')
 )) {
@@ -1501,7 +1502,23 @@ $rootModelBoundaryChecks = @(
     },
     @{
         Path = Join-Path $repositoryRoot "src\Prediction\MonsterSpawnSupport.cs"
-        Text = ".SelectMany(combat.RelicsOf)"
+        Text = "HookMirrors.AfterCreatureAddedToCombat(simulator, creature)"
+    },
+    @{
+        Path = Join-Path $repositoryRoot "src\Search\SimulatedCombatState.CardLifecycle.cs"
+        Text = "HookMirrors.BeforeHandDraw(simulator, player, choices)"
+    },
+    @{
+        Path = Join-Path $repositoryRoot "src\Search\SimulatedCombatState.cs"
+        Text = "Rules = source.Rules"
+    },
+    @{
+        Path = Join-Path $repositoryRoot "src\Prediction\DominionPredictionSupport.cs"
+        Text = "Run.SetValue(clone, null)"
+    },
+    @{
+        Path = Join-Path $repositoryRoot "src\Prediction\NativeCombatRulesScope.cs"
+        Text = "[ThreadStatic] private static CombatRulesSnapshot? _current"
     },
     @{
         Path = Join-Path $repositoryRoot "src\Search\SimulatedCombatState.cs"
@@ -1509,7 +1526,11 @@ $rootModelBoundaryChecks = @(
     },
     @{
         Path = Join-Path $repositoryRoot "src\Search\SimulatedCombatState.cs"
-        Text = "MultiplayerScalingRunStateField.SetValue(detachedMultiplayerScaling, null)"
+        Text = "RunModelRunStateField.SetValue(detached, null)"
+    },
+    @{
+        Path = Join-Path $repositoryRoot "src\Search\SimulatedCombatState.cs"
+        Text = "RunModelCombatStateField.SetValue(detached, null)"
     },
     @{
         Path = Join-Path $repositoryRoot "src\Engine\InCombat\Mirrors\Hooks\Block\ModifyBlockMultiplicativeMirrors.cs"
@@ -2234,7 +2255,7 @@ if ($dynamicVarDirectAccess) {
 }
 
 $extraTurnRegistry = [IO.File]::ReadAllText((Join-Path $repositoryRoot 'src/Engine/InCombat/Mirrors/Hooks/TurnEnd/ExtraTurnMirrors.cs'))
-foreach ($registration in @('ShouldRegistry.Register<AmbergrisPower>', 'ShouldRegistry.Register<PaelsEye>', 'AfterRegistry.Register<AmbergrisPower>', 'AfterRegistry.Register<PaelsEye>')) {
+foreach ($registration in @('ShouldRegistry.Register<ExtraTurnPower>', 'EarlyRegistry.Register<PaelsEye>', 'AfterRegistry.Register<ExtraTurnPower>', 'AfterRegistry.Register<PaelsEye>')) {
     if (-not $extraTurnRegistry.Contains($registration)) {
         $violations.Add("Extra-turn native effects must use the shared registry: $registration")
     }

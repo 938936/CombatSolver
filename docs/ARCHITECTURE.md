@@ -40,6 +40,7 @@
 | `FrontierContinuationScheduler` | 固定前缀成员派发与用途归因 |
 | `CombatBeamSolver.cs` / `.Models.cs` | 不可变根配置、策略接线、节点和运行上下文 |
 | `.Phases.cs` / `.Expansion.cs` | Solve 阶段和动作回放入口 |
+| `CombatSearchCoordinator.BossTempo.cs` / `CombatBeamSolver.BossTempo.cs` | 首领追加额度、首回合偏差侦察、纯值前缀与后续搜索 |
 | `.ParallelExpansion.cs` / `.AdmittedExpansion.cs` | 固定 worker lane、已准入作业及确定性提交 |
 | `.PrimaryChoiceReplay.cs` | 原预算必经的首层选择回放与暂存 |
 | `.BeamRetentionPolicy.cs` | 去重、Beam、多样性、选择保路、药水配额与 Pareto |
@@ -70,6 +71,10 @@
 
 Smart 药水梯度在主成员耗尽时间时拥有一个独立成员时间：仅对无强制指令、无显式用药的完整搜索结果和可搜索药水启用，首个可选层使用软预算的 1/5（1–30 秒）及 1/6 收尾窗口。梯度显式限制层数；后置开局前缀仍按请求账本准入。该成员的工作进入原请求总账本。
 
+首领成员在原请求的主搜和后处理完成后运行，按 `EncounterRoomType.Boss` 准入。节点和软时间分别追加原配置的1/5，工作累计到同一个请求账本。侦察最多使用追加额度的1/3，允许3次排序偏差，以深度优先枚举首回合边界；独立转置键包含完整状态与剩余偏差，六维支配标签沿原实现。边界回调只复制动作、状态键、消灭敌人数、用药数和中途排名，按用药档最多保留24个纯值前缀。有强制用药指令时，已兑现全部指令的前缀优先；随后按消灭敌人数、用药量及排名选取至多两个前缀，固定回放后由原Beam搜索完成后续，所有成员共享追加余量及纯值资源桶界。中途HP单次计价，侦察及后验均保留等损续路；最后只接纳安全完整胜利，沿既有结果政策取优。`Phases` 提供内存预约、进度、取消与接管边界，待处理快照由侦察成员释放。
+
+请求完成与中途接管的预算报告由 `SearchBudgetLedger.Capture` 持有，写入 `SolverResult.RequestBudget`。UI 用请求累计节点和预算边界生成统计与上限提示；各成员的节点数、停止原因和路线继续保留原诊断语义。该快照只属展示与诊断，搜索准入和结果比较沿原账本执行。
+
 ## 4. 模拟与 Prediction
 
 | 位置 | 职责 |
@@ -81,6 +86,10 @@ Smart 药水梯度在主成员耗尽时间时拥有一个独立成员时间：�
 
 每项战斗语义只有一个权威结算实现。可变值由根快照、影子状态、克隆 Model 或 `PredictionStateStore` 持有。一次 Fork 共用 `PredictionForkContext`，引用随同一上下文重映射；COW 取得可写所有者后再写。
 
+`CombatRulesSnapshot` 在根捕获冻结游戏模式、原生进阶集合及领域身份。生成池、变牌、怪物效果、缓存和续用消费同一快照。原生怪物的同步初始化与静态参数采集用 `NativeCombatRulesScope` 暂时提供该根的进阶查询；作用域按线程嵌套恢复，运行时补丁仅在该作用域内返回冻结值。领域和 RunModel 按原生顺序进入克隆监听表，战斗中可变状态沿现有 Power／StateStore 所有权维护。
+
+`BeforeHandDrawMirrors` 与 `AfterCreatureAddedMirrors` 分别拥有抽牌前和生物入场的精确类型登记。Hook facade 冻结有序监听者并调用原有单项效果；抽牌前挂起选择通过既有执行帧恢复。知识诅咒的共用效果体由首领与领域分别提供候选、伤害和时机；敌方回合选择与玩家准备选择按 `PlanChoiceTiming` 区分。
+
 Fork 发生在动作、选牌、Power、死亡和出牌事务允许复制的稳定边界。玩家记录的卡牌/药水嵌套效果作用域由引擎持有；选牌检查点保存不可变身份序列，恢复建立分支独占列表。最外层效果结束后再检查手空。稳定根及跨回合状态的该作用域为空，普通 Fork 要求为空。
 
 未知 gameplay subscriber 显式拒绝；已支持来源在主线程捕获，并在分支中消费隔离状态。内置的 Act 4 Heart 前三层兼容层（`src/Prediction/Act4HeartCompat.cs`）按 MVID 与 hook 覆盖集审计后，经订阅者确认表和回合末域分支放行该 Mod 的前三层内容；审计失败整层不登记。登记合同与封闭入口见 [第三方适配手册](third-party/README.md)。
@@ -89,7 +98,17 @@ Fork 发生在动作、选牌、Power、死亡和出牌事务允许复制的稳�
 
 回合末自动出牌先于 BeforeSideTurnEndEarly，PAELS_EYE 的手牌消耗由该 Hook 镜像拥有；额外回合资格在阶段结算后判断。部署会话区分动作、玩家结束／敌方阶段与下一玩家回合；最后一个结束阶段选择确认前解除旧会话归属。UI 的步骤和完成回调核对所属回合及当前路线快照。
 
-额外回合的判断与后置效果由 `ExtraTurnMirrors` 登记原版和第三方单项语义，`HookMirrors` 按原生监听顺序派发。后置回调使用固定成员快照，选牌暂停沿动作重放恢复；分支 Power 与帕尔之眼使用状态继续由 `SimulatedCombatState` 持有。
+额外回合的提前判断、普通判断与后置效果由 `ExtraTurnMirrors` 登记。`HookMirrors` 先遍历 Early，再遍历普通阶段；首个命中来源持有本次资格，后置仅调用该来源。选牌暂停沿动作重放恢复；分支 Power 与帕尔之眼使用状态由 `SimulatedCombatState` 持有。
+
+`RunModels` 在主线程根捕获时克隆，按原生顺序进入监听前缀，Fork 保持分支所有权。九条战斗 RNG 与每名玩家的 `NonCombatGeneration` 共用完整状态快照及惰性物化合同。`CombatCardOrdering` 按新版原生顺序比较逐实例状态，费用经分支 Hook 解析；模拟洗牌和搜索投影共用此入口。
+
+箭槽由 `SimPlayerCombatState` 持有；`ImpaledPower` 的有序箭引用经同一个 Fork context 重映射。`CombatPredictionSimulator.Arrows` 负责射击、插入、拔出和销毁，`ArrowMirrors` 派发原生箭 Hook。旋律 Started／Finished 计数和首次 CardPlay 身份由 `SimulatedCombatState.Melodies` 持有。`AimPowerMirrors` 保存攻击后仍有效的来源身份；`SimulatedCombatState.ShowOff` 保存成长 Power 对卡实例的引用。玩法 Dupe 持有分支原牌，包含离开牌堆的来源；Clone 与 Fork 分别保留原生玩法语义和分支隔离。
+
+`CardChoiceSupport.GetPotentialEffect` 提供开局选择类型；候选在实际出牌时构建并消费历史与 RNG。动态保留由 `CombatPredictedCardExtensions.ShouldRetainThisTurn` 合并分支关键词与逐实例单回合标记；指纹保存后者及已存在的关键词／Power 状态。回合准备的原版快捷路径与扩展 registry 共用 `TurnStartPowerSupport.ApplyBeforeSideTurnStartPower`，包含 Yah/Lullaby 复位；测试使用相同 Hook facade。
+
+监听参与位的 `AdditionalCallbacks` 汇集箭、额外回合及新伤害回调，按类型保守保留成员；各方法仍由精确 registry 或原有推断入口执行。`SolverDisplayNames` 和 UI 共用 `DingyDaggerDisplayNames` 的原生名称段，根冻结本地化规则后按实际等级格式化。
+
+伤害命令先修正伤害并触发伤害前 Hook，再经过 `ModifyPreBlockDamageTargetMirrors`、格挡及奥斯提转移。战宠生命、最大生命、格挡和关联遗物计数进入状态键与续用；战宠死亡后是否保留阵容由分支死亡语义判断。
 
 金币命令由 `GoldGainSupport` 串联标准镜像：修改使用跑局前缀和战斗监听表，获得后的回调使用原生 null-child 跑局作用域。`SimulatedCombatState.GoldHooks` 在主线程冻结活动成员与已克隆全局来源，Fork 只读共享；遗物、药水、金币和 HP 仍从所属分支读取。未知金币 override 显式拒绝。监听参与位图为三个金币方法共用一位，只形成保守成员超集，精确方法仍由 registry 区分；不溢出或复用其他 Hook 位。`CombatPredictionSimulator.GainMaxHp` 单独实现实际封顶增量与后续 Heal，Feed、FruitJuice 和 DragonFruit 共用这一权威入口。
 

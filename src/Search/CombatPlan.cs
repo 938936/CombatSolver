@@ -1476,7 +1476,10 @@ internal sealed class SolverResult
     public required IntentForecast Forecast { get; init; }
     public required int ExpandedNodes { get; init; }
     public long TotalExpandedNodes { get; internal set; }
+    public SearchRequestBudgetSnapshot? RequestBudget { get; internal set; }
     public NoveltySearchTelemetry? NoveltySearch { get; init; }
+    internal BossTempoSearchTelemetry? BossTempoSearch { get; set; }
+    internal BossTempoIterationTelemetry? BossTempoIteration { get; set; }
     public NoveltyPortfolioTelemetry? NoveltyPortfolio { get; internal set; }
     public required int DominatedActionsPruned { get; init; }
     public required int TopQueueActionsDropped { get; init; }
